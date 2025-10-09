@@ -10,7 +10,6 @@ readme = "README.md"
 keywords = [
   "dependency-injection",
   "di",
-  "rust",
   "sadi",
   "semi-automatic",
   "axum-di",
