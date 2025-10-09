@@ -15,5 +15,6 @@ keywords = [
   "semi-automatic",
   "axum-di",
 ]
+authors = ["João Pedro Martins <mjoaopedro61@gmail.com>"]
 
 [dependencies]
