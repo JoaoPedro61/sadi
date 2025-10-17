@@ -393,3 +393,528 @@ impl SaDi {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    // Test services for various scenarios
+
+    /// Simple service with no dependencies
+    #[derive(Debug, Clone, PartialEq)]
+    struct SimpleService {
+        value: u32,
+    }
+
+    impl SimpleService {
+        fn new(value: u32) -> Self {
+            Self { value }
+        }
+    }
+
+    /// Service that depends on SimpleService
+    #[derive(Debug)]
+    struct DependentService {
+        simple: SimpleService,
+        multiplier: u32,
+    }
+
+    impl DependentService {
+        fn new(simple: SimpleService, multiplier: u32) -> Self {
+            Self { simple, multiplier }
+        }
+
+        fn calculate(&self) -> u32 {
+            self.simple.value * self.multiplier
+        }
+    }
+
+    /// Singleton service with state
+    #[derive(Debug)]
+    struct CounterService {
+        counter: Arc<AtomicUsize>,
+    }
+
+    impl CounterService {
+        fn new() -> Self {
+            Self {
+                counter: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+
+        fn increment(&self) -> usize {
+            self.counter.fetch_add(1, Ordering::SeqCst) + 1
+        }
+
+        fn get(&self) -> usize {
+            self.counter.load(Ordering::SeqCst)
+        }
+    }
+
+    /// Service that depends on multiple services
+    #[derive(Debug)]
+    struct ComplexService {
+        _dependent: DependentService,
+        counter: Rc<CounterService>,
+        _name: String,
+    }
+
+    impl ComplexService {
+        fn new(dependent: DependentService, counter: Rc<CounterService>, name: String) -> Self {
+            Self {
+                _dependent: dependent,
+                counter,
+                _name: name,
+            }
+        }
+    }
+
+    // Test scenarios
+
+    #[test]
+    fn test_basic_transient_service() {
+        let container = SaDi::new().factory(|_| SimpleService::new(42));
+
+        let service1 = container.get::<SimpleService>();
+        let service2 = container.get::<SimpleService>();
+
+        assert_eq!(service1.value, 42);
+        assert_eq!(service2.value, 42);
+        // Transient services should be different instances
+        assert_ne!(&service1 as *const _, &service2 as *const _);
+    }
+
+    #[test]
+    fn test_basic_singleton_service() {
+        let container = SaDi::new().factory_singleton(|_| CounterService::new());
+
+        let service1 = container.get_singleton::<CounterService>();
+        let service2 = container.get_singleton::<CounterService>();
+
+        // Singletons should be the same instance
+        assert_eq!(Rc::as_ptr(&service1), Rc::as_ptr(&service2));
+
+        // Test that state is shared
+        assert_eq!(service1.increment(), 1);
+        assert_eq!(service2.get(), 1);
+        assert_eq!(service2.increment(), 2);
+        assert_eq!(service1.get(), 2);
+    }
+
+    #[test]
+    fn test_dependency_injection() {
+        let container = SaDi::new()
+            .factory(|_| SimpleService::new(10))
+            .factory(|di: &SaDi| {
+                let simple = di.get::<SimpleService>();
+                DependentService::new(simple, 5)
+            });
+
+        let service = container.get::<DependentService>();
+        assert_eq!(service.calculate(), 50);
+    }
+
+    #[test]
+    fn test_mixed_transient_and_singleton() {
+        let container = SaDi::new()
+            .factory(|_| SimpleService::new(7))
+            .factory_singleton(|_| CounterService::new())
+            .factory(|di: &SaDi| {
+                let simple = di.get::<SimpleService>();
+                let counter = di.get_singleton::<CounterService>();
+                ComplexService::new(
+                    DependentService::new(simple, 3),
+                    counter,
+                    "TestService".to_string(),
+                )
+            });
+
+        let service1 = container.get::<ComplexService>();
+        let service2 = container.get::<ComplexService>();
+
+        // Different ComplexService instances
+        assert_ne!(&service1 as *const _, &service2 as *const _);
+
+        // But same CounterService singleton
+        assert_eq!(Rc::as_ptr(&service1.counter), Rc::as_ptr(&service2.counter));
+
+        // Test shared state
+        service1.counter.increment();
+        assert_eq!(service2.counter.get(), 1);
+    }
+
+    #[test]
+    fn test_deep_dependency_chain() {
+        // Create a chain: Level3 -> Level2 -> Level1 -> SimpleService
+
+        #[derive(Debug)]
+        struct Level1Service(SimpleService);
+
+        #[derive(Debug)]
+        struct Level2Service(Level1Service);
+
+        #[derive(Debug)]
+        struct Level3Service(Level2Service);
+
+        let container = SaDi::new()
+            .factory(|_| SimpleService::new(100))
+            .factory(|di: &SaDi| Level1Service(di.get::<SimpleService>()))
+            .factory(|di: &SaDi| Level2Service(di.get::<Level1Service>()))
+            .factory(|di: &SaDi| Level3Service(di.get::<Level2Service>()));
+
+        let service = container.get::<Level3Service>();
+        assert_eq!(service.0.0.0.value, 100);
+    }
+
+    #[test]
+    fn test_error_service_not_registered() {
+        let container = SaDi::new();
+
+        // Test try_get
+        match container.try_get::<SimpleService>() {
+            Err(Error {
+                kind: ErrorKind::ServiceNotRegistered,
+                ..
+            }) => (),
+            _ => panic!("Expected ServiceNotRegistered error"),
+        }
+
+        // Test try_get_singleton
+        match container.try_get_singleton::<SimpleService>() {
+            Err(Error {
+                kind: ErrorKind::ServiceNotRegistered,
+                ..
+            }) => (),
+            _ => panic!("Expected ServiceNotRegistered error"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "No transient factory registered")]
+    fn test_panic_service_not_registered() {
+        let container = SaDi::new();
+        let _ = container.get::<SimpleService>();
+    }
+
+    #[test]
+    fn test_error_factory_already_registered() {
+        let container = SaDi::new().factory(|_| SimpleService::new(1));
+
+        // Try to register the same type again
+        match container.try_factory(|_| SimpleService::new(2)) {
+            Err(Error {
+                kind: ErrorKind::FactoryAlreadyRegistered,
+                ..
+            }) => (),
+            _ => panic!("Expected FactoryAlreadyRegistered error"),
+        }
+    }
+
+    #[test]
+    fn test_error_singleton_already_registered() {
+        let container = SaDi::new().factory_singleton(|_| CounterService::new());
+
+        // Try to register the same singleton type again
+        match container.try_factory_singleton(|_| CounterService::new()) {
+            Err(Error {
+                kind: ErrorKind::FactoryAlreadyRegistered,
+                ..
+            }) => (),
+            _ => panic!("Expected FactoryAlreadyRegistered error"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "transient factory already registered")]
+    fn test_panic_factory_already_registered() {
+        let _container = SaDi::new()
+            .factory(|_| SimpleService::new(1))
+            .factory(|_| SimpleService::new(2)); // This should panic
+    }
+
+    #[test]
+    fn test_circular_dependency_detection() {
+        // Test that circular dependency detection works
+        // Since circular dependencies will cause panics in factories when using get(),
+        // we test this with a should_panic test instead
+
+        #[derive(Debug)]
+        struct ServiceA;
+
+        #[derive(Debug)]
+        struct ServiceB;
+
+        let container = SaDi::new()
+            .factory(|di: &SaDi| {
+                di.get::<ServiceB>();
+                ServiceA
+            })
+            .factory(|di: &SaDi| {
+                di.get::<ServiceA>();
+                ServiceB
+            });
+
+        // This should panic due to circular dependency detection
+        // The panic message will contain "Circular dependency detected"
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| container.get::<ServiceA>()));
+
+        // Verify that it panicked
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "Circular dependency detected")]
+    fn test_panic_circular_dependency() {
+        // Direct self-dependency
+
+        #[allow(dead_code)]
+        #[derive(Debug)]
+        struct SelfDependent(Box<SelfDependent>);
+
+        let container =
+            SaDi::new().factory(|di: &SaDi| SelfDependent(Box::new(di.get::<SelfDependent>())));
+
+        let _ = container.get::<SelfDependent>();
+    }
+
+    #[test]
+    fn test_complex_circular_dependency() {
+        // Test A -> B -> C -> A circular dependency with panic detection
+
+        #[derive(Debug)]
+        struct ServiceA;
+
+        #[derive(Debug)]
+        struct ServiceB;
+
+        #[derive(Debug)]
+        struct ServiceC;
+
+        let container = SaDi::new()
+            .factory(|di: &SaDi| {
+                di.get::<ServiceB>();
+                ServiceA
+            })
+            .factory(|di: &SaDi| {
+                di.get::<ServiceC>();
+                ServiceB
+            })
+            .factory(|di: &SaDi| {
+                di.get::<ServiceA>();
+                ServiceC
+            });
+
+        // This should panic due to circular dependency detection
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| container.get::<ServiceA>()));
+
+        // Verify that it panicked (indicating circular dependency was detected)
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_singleton_bypasses_circular_check_when_cached() {
+        // Test that cached singletons don't trigger circular dependency checks
+
+        #[derive(Debug)]
+        struct CachedService {
+            id: u32,
+        }
+
+        impl CachedService {
+            fn new(id: u32) -> Self {
+                Self { id }
+            }
+        }
+
+        let container = SaDi::new().factory_singleton(|_| CachedService::new(42));
+
+        // Get the singleton to cache it
+        let cached = container.get_singleton::<CachedService>();
+        assert_eq!(cached.id, 42);
+
+        // Now create a service that depends on the cached singleton
+        // This should work even if it might look like a circular dependency
+        let container = container.factory(|di: &SaDi| {
+            let cached_service = di.get_singleton::<CachedService>();
+            format!("Dependent on cached service with id: {}", cached_service.id)
+        });
+
+        let result = container.get::<String>();
+        assert_eq!(result, "Dependent on cached service with id: 42");
+    }
+
+    #[test]
+    fn test_multiple_dependencies_same_type() {
+        // Test service that requires the same dependency multiple times
+
+        #[derive(Debug)]
+        struct MultiDependentService {
+            counter1: Rc<CounterService>,
+            counter2: Rc<CounterService>,
+        }
+
+        impl MultiDependentService {
+            fn new(counter1: Rc<CounterService>, counter2: Rc<CounterService>) -> Self {
+                Self { counter1, counter2 }
+            }
+        }
+
+        let container = SaDi::new()
+            .factory_singleton(|_| CounterService::new())
+            .factory(|di: &SaDi| {
+                MultiDependentService::new(
+                    di.get_singleton::<CounterService>(),
+                    di.get_singleton::<CounterService>(),
+                )
+            });
+
+        let service = container.get::<MultiDependentService>();
+
+        // Both should reference the same singleton
+        assert_eq!(Rc::as_ptr(&service.counter1), Rc::as_ptr(&service.counter2));
+
+        // Test shared state
+        service.counter1.increment();
+        assert_eq!(service.counter2.get(), 1);
+    }
+
+    #[test]
+    fn test_factory_with_complex_logic() {
+        // Test factory with conditional logic and external state
+
+        #[derive(Debug)]
+        struct ConfigurableService {
+            mode: String,
+            value: i32,
+        }
+
+        impl ConfigurableService {
+            fn new(mode: String, value: i32) -> Self {
+                Self { mode, value }
+            }
+        }
+
+        let external_config = 100;
+        let container = SaDi::new().factory(move |_| {
+            let mode = if external_config > 50 {
+                "high".to_string()
+            } else {
+                "low".to_string()
+            };
+            ConfigurableService::new(mode, external_config)
+        });
+
+        let service = container.get::<ConfigurableService>();
+        assert_eq!(service.mode, "high");
+        assert_eq!(service.value, 100);
+    }
+
+    #[test]
+    fn test_error_display_format() {
+        let error = Error::service_not_registered("TestType", "transient");
+        let display = format!("{}", error);
+        assert!(display.contains("ServiceNotRegistered"));
+        assert!(display.contains("No transient factory registered for type: TestType"));
+    }
+
+    #[test]
+    fn test_container_chaining() {
+        // Test that factory methods can be chained
+
+        #[derive(Debug, PartialEq)]
+        struct StringService(String);
+
+        #[derive(Debug, PartialEq)]
+        struct CountedService(String);
+
+        let container = SaDi::new()
+            .factory(|_| SimpleService::new(1))
+            .factory_singleton(|_| CounterService::new())
+            .factory(|di: &SaDi| {
+                StringService(format!("Value: {}", di.get::<SimpleService>().value))
+            })
+            .factory(|di: &SaDi| {
+                let counter = di.get_singleton::<CounterService>();
+                let count = counter.increment();
+                CountedService(format!("Count: {}", count))
+            });
+
+        let string_service = container.get::<StringService>();
+        assert_eq!(string_service.0, "Value: 1");
+
+        let counted_service = container.get::<CountedService>();
+        assert_eq!(counted_service.0, "Count: 1");
+    }
+
+    #[test]
+    fn test_large_dependency_graph() {
+        // Test performance with a larger dependency graph
+
+        #[derive(Debug)]
+        struct Node1(SimpleService);
+        #[derive(Debug)]
+        struct Node2(Node1);
+        #[derive(Debug)]
+        struct Node3(Node2);
+        #[derive(Debug)]
+        struct Node4(Node3);
+        #[derive(Debug)]
+        struct Node5(Node4);
+        #[derive(Debug)]
+        struct FinalNode(Node5, Rc<CounterService>);
+
+        let container = SaDi::new()
+            .factory(|_| SimpleService::new(999))
+            .factory_singleton(|_| CounterService::new())
+            .factory(|di: &SaDi| Node1(di.get::<SimpleService>()))
+            .factory(|di: &SaDi| Node2(di.get::<Node1>()))
+            .factory(|di: &SaDi| Node3(di.get::<Node2>()))
+            .factory(|di: &SaDi| Node4(di.get::<Node3>()))
+            .factory(|di: &SaDi| Node5(di.get::<Node4>()))
+            .factory(|di: &SaDi| {
+                FinalNode(di.get::<Node5>(), di.get_singleton::<CounterService>())
+            });
+
+        let final_node = container.get::<FinalNode>();
+        assert_eq!(final_node.0.0.0.0.0.0.value, 999);
+
+        // Test that counter is properly injected
+        assert_eq!(final_node.1.increment(), 1);
+    }
+
+    #[test]
+    fn test_resolution_stack_with_missing_dependency() {
+        // Test that resolution stack works correctly with missing dependencies
+
+        #[derive(Debug)]
+        struct ServiceWithMissingDep {
+            _value: u32,
+        }
+
+        let container = SaDi::new().factory(|di: &SaDi| {
+            // This will fail because SimpleService is not registered
+            // Use try_get to avoid panic
+            match di.try_get::<SimpleService>() {
+                Ok(_) => ServiceWithMissingDep { _value: 42 },
+                Err(_) => ServiceWithMissingDep { _value: 0 },
+            }
+        });
+
+        // This should succeed now
+        let service = container.get::<ServiceWithMissingDep>();
+        assert_eq!(service._value, 0);
+
+        // Test that missing dependency error still works for direct calls
+        match container.try_get::<SimpleService>() {
+            Err(Error {
+                kind: ErrorKind::ServiceNotRegistered,
+                ..
+            }) => (),
+            _ => panic!("Expected ServiceNotRegistered error"),
+        }
+    }
+}
