@@ -9,6 +9,11 @@ on:
       package:
         description: "Optional: package name to release (for workspaces). Leave empty to release root package."
         required: false
+# Give permission to GITHUB_TOKEN
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   cargo-release:
     name: Run cargo-release (bump, tag, publish)
