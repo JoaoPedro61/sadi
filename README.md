@@ -23,10 +23,10 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sadi = "0.1.0"
+sadi = "0.1.2"
 
 # Optional: Enable tracing support
-sadi = { version = "0.1.0", features = ["tracing"] }
+sadi = { version = "0.1.2", features = ["tracing"] }
 ```
 
 ## 🚀 Quick Start
@@ -211,7 +211,7 @@ Enable the `tracing` feature for automatic logging:
 
 ```toml
 [dependencies]
-sadi = { version = "0.1.0", features = ["tracing"] }
+sadi = { version = "0.1.2", features = ["tracing"] }
 ```
 
 ```rust
