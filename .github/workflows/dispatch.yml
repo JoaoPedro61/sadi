@@ -41,9 +41,9 @@ jobs:
           # If you have a workspace and want to release a specific package, pass --package NAME.
           if [ -n "${{ github.event.inputs.package }}" ]; then
             echo "Releasing package: ${{ github.event.inputs.package }}"
-            cargo release ${{ github.event.inputs.level }} --package "${{ github.event.inputs.package }}" --execute
+            cargo release ${{ github.event.inputs.level }} --package "${{ github.event.inputs.package }}" --execute --no-confirm
           else
             echo "Releasing root package"
-            cargo release ${{ github.event.inputs.level }} --execute
+            cargo release ${{ github.event.inputs.level }} --execute --no-confirm
           fi
           
