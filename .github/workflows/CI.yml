@@ -3,7 +3,6 @@ name: CI
 
 env:
   CARGO_TERM_COLOR: always
-  MSRV: '1.78'
 
 on:
   workflow_dispatch:
@@ -50,10 +49,10 @@ jobs:
           - sadi
     steps:
       - uses: actions/checkout@v5
-      - name: Install stable with clippy and rustfmt
+      - name: Install stable
         uses: dtolnay/rust-toolchain@master
         with:
-          components: clippy, rustfmt
+          toolchain: stable
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -62,9 +61,27 @@ jobs:
     env:
       RUSTDOCFLAGS: "-D rustdoc::all -A rustdoc::private-doc-tests"
 
+  deny:
+    name: Deny verify
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.checks == 'advisories' }}
+    strategy:
+      matrix:
+        checks:
+          - advisories
+          - bans licenses sources
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check ${{ matrix.checks }}
+
   test:
     name: Run test
-    needs: lint_and_fmt
+    needs:
+      - lint_and_fmt
+      - docs
+      - deny
     strategy:
       matrix:
         os:
@@ -83,11 +100,15 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           override: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run test on ${{ matrix.os }} OS for ${{ matrix.rust }} toolchain
-        run: cargo test --workspace
+        run: cargo test --workspace # this already run doc tests
 
   cargo-release:
     name: Run cargo-release (bump, tag, publish)
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history for tags)
@@ -95,8 +116,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install stable
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           override: true
@@ -117,9 +138,9 @@ jobs:
           # If you have a workspace and want to release a specific package, pass --package NAME.
           if [ -n "${{ github.event.inputs.package }}" ]; then
             echo "Releasing package: ${{ github.event.inputs.package }}"
-            # cargo release ${{ github.event.inputs.level }} --package "${{ github.event.inputs.package }}" --execute --no-confirm
+            cargo release ${{ github.event.inputs.level }} --package "${{ github.event.inputs.package }}" --execute --no-confirm
           else
             echo "Releasing root package"
-            # cargo release ${{ github.event.inputs.level }} --execute --no-confirm
+            cargo release ${{ github.event.inputs.level }} --execute --no-confirm
           fi
           
