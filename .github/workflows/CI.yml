@@ -1,4 +1,10 @@
 # .github/workflows/CI.yml
+name: CI
+
+env:
+  CARGO_TERM_COLOR: always
+  MSRV: '1.78'
+
 on:
   workflow_dispatch:
     inputs:
@@ -9,18 +15,58 @@ on:
       package:
         description: "Optional: package name to release (for workspaces). Leave empty to release root package."
         required: false
+        
 # Give permission to GITHUB_TOKEN
 permissions:
   contents: write
   packages: write
 
 jobs:
+  lint_and_fmt:
+    name: Run clippy and rustfmt checker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install stable with clippy and rustfmt
+        uses: dtolnay/rust-toolchain@master
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Run fmt
+        run: cargo fmt --all --check
+
+  docs:
+    name: Check documentation
+    needs: lint_and_fmt
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate:
+          - sadi
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install stable with clippy and rustfmt
+        uses: dtolnay/rust-toolchain@master
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Run doc on ${{ matrix.crate }}
+        run: cargo doc --package ${{ matrix.crate }} --all-features --no-deps
+    env:
+      RUSTDOCFLAGS: "-D rustdoc::all -A rustdoc::private-doc-tests"
+
   cargo-release:
     name: Run cargo-release (bump, tag, publish)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history for tags)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
