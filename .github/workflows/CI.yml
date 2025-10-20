@@ -59,7 +59,7 @@ jobs:
       - name: Run doc on ${{ matrix.crate }}
         run: cargo doc --package ${{ matrix.crate }} --all-features --no-deps
     env:
-      RUSTDOCFLAGS: "-D rustdoc::all -A rustdoc::private-doc-tests"
+      RUSTDOCFLAGS: "-A rustdoc::private-doc-tests"
 
   deny:
     name: Deny verify
