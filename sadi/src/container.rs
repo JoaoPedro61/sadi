@@ -21,7 +21,7 @@ use std::cell::RefCell;
 #[cfg(not(feature = "thread-safe"))]
 use std::rc::Rc;
 
-use crate::{Error, Factory, IntoShared, Provider, Shared, FactoriesMap};
+use crate::{Error, FactoriesMap, Factory, IntoShared, Provider, Shared};
 
 /// The DI container.
 pub struct Container {
@@ -304,5 +304,47 @@ impl Container {
         let type_id = TypeId::of::<T>();
         let map = self.factories.borrow();
         map.contains_key(&type_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Simple concrete type for testing
+    struct S(pub i32);
+
+    #[test]
+    fn bind_and_resolve_concrete() {
+        let c = Container::new();
+        // Register a transient concrete provider that returns S(7)
+        c.bind_concrete::<S, S, _>(|_c| S(7)).unwrap();
+        let s = c.resolve::<S>().unwrap();
+        assert_eq!((*s).0, 7);
+    }
+
+    #[test]
+    fn bind_instance_and_singleton_behavior() {
+        let c = Container::new();
+        // Register an already-created instance as singleton
+        let instance = Shared::new(S(5));
+        c.bind_instance::<S, _>(instance).unwrap();
+        assert!(c.has::<S>());
+
+        let a = c.resolve::<S>().unwrap();
+        let b = c.resolve::<S>().unwrap();
+        // Both resolves should point to the same shared instance
+        let pa = (&*a) as *const S;
+        let pb = (&*b) as *const S;
+        assert_eq!(pa, pb);
+    }
+
+    #[test]
+    fn resolve_guard_detects_cycle() {
+        // Directly exercise ResolveGuard for circular detection
+        let _g1 = crate::ResolveGuard::push("A").unwrap();
+        let _g2 = crate::ResolveGuard::push("B").unwrap();
+        let err = crate::ResolveGuard::push("A").unwrap_err();
+        assert_eq!(err.kind, crate::ErrorKind::CircularDependency);
     }
 }
