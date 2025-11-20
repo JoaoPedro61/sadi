@@ -6,19 +6,28 @@
 //!
 //! # Example
 //! ```
-//! use sadi::factory::Factory;
+//! use sadi::Factory;
 //! use sadi::{Shared, Container};
 //! use std::cell::Cell;
 //!
 //! struct Counter(Cell<u32>);
-//! impl Counter { fn inc(&self) -> u32 { let v = self.0.get(); self.0.set(v+1); v+1 } }
+//! impl Counter {
+//!     fn inc(&self) -> u32 {
+//!         let v = self.0.get();
+//!         self.0.set(v+1);
+//!         v+1
+//!     }
+//! }
 //!
 //! let provider = Box::new(|_c: &Container| Shared::new(Counter(Cell::new(0))));
-//! let f = Factory::new(provider, false); // transient
-//! let c = Container::default();
+//! 
+//! let f = Factory::new(provider, false); // singleton
+//! let c = Container::new();
+//! 
 //! let a = f.provide(&c);
 //! let b = f.provide(&c);
-//! assert_ne!(a.inc(), b.inc()); // different instances
+//! 
+//! assert!(!Shared::ptr_eq(&a, &b)); // same instances
 //! ```
 //!
 //! For singleton, use `true` for the second argument and verify the same instance is reused.
@@ -99,7 +108,6 @@ impl<T: ?Sized + 'static> Factory<T> {
 mod tests {
     use super::*;
     use std::cell::Cell;
-    // No Default needed; use Container::new()
 
     struct Counter(Cell<u32>);
     impl Counter {
