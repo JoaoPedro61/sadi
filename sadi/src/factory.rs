@@ -117,7 +117,8 @@ mod tests {
         let c = Container::new();
         let a = f.provide(&c);
         let b = f.provide(&c);
-        assert_ne!(a.inc(), b.inc()); // different instances
+        // Ensure these are different instances (pointer inequality)
+        assert!(!Shared::ptr_eq(&a, &b));
     }
 
     #[test]
@@ -127,6 +128,7 @@ mod tests {
         let c = Container::new();
         let a = f.provide(&c);
         let b = f.provide(&c);
-        assert_eq!(a.inc(), b.inc()); // same instance
+        // Ensure these are the same instance (pointer equality)
+        assert!(Shared::ptr_eq(&a, &b));
     }
 }

@@ -6,8 +6,7 @@
 //!
 //! # Example
 //! ```
-//! use sadi::resolve_guard::ResolveGuard;
-//! use sadi::Error;
+//! use sadi::{ErrorKind, ResolveGuard};
 //!
 //! // Push a type name onto the stack
 //! let _g1 = ResolveGuard::push("A").unwrap();
@@ -15,7 +14,7 @@
 //! let _g2 = ResolveGuard::push("B").unwrap();
 //! // Pushing the same type again triggers a circular dependency error
 //! let err = ResolveGuard::push("A").unwrap_err();
-//! assert!(matches!(err.kind, Error::ErrorKind::CircularDependency));
+//! assert!(matches!(err.kind, ErrorKind::CircularDependency));
 //! ```
 
 use std::cell::RefCell;

@@ -41,7 +41,7 @@
 //! ## Basic Example
 //!
 //! ```rust
-//! use mycrate::Container;
+//! use sadi::Container;
 //!
 //! struct Service {
 //!     pub value: i32,
@@ -58,7 +58,10 @@
 //! ## Trait Binding Example
 //!
 //! ```rust
-//! trait Repo {
+//! use sadi::Container;
+//! use std::sync::Arc;
+//! 
+//! trait Repo: Send + Sync {
 //!     fn n(&self) -> i32;
 //! }
 //!
@@ -69,7 +72,7 @@
 //!
 //! let c = Container::new();
 //!
-//! c.bind_abstract::<dyn Repo, _, _>(|_| RepoImpl).unwrap();
+//! c.bind_abstract::<dyn Repo, _, _>(|_| Arc::new(RepoImpl)).unwrap();
 //!
 //! let repo = c.resolve::<dyn Repo>().unwrap();
 //! assert_eq!(repo.n(), 42);
@@ -78,6 +81,7 @@
 //! ## Singleton Example
 //!
 //! ```rust
+//! use sadi::Container;
 //! use std::sync::Mutex;
 //!
 //! struct Counter(Mutex<i32>);
@@ -96,7 +100,9 @@
 //! ## Complex Example: Service Graph
 //!
 //! ```rust
-//! trait Logger {
+//! use sadi::Container;
+//! 
+//! trait Logger: Send + Sync {
 //!     fn log(&self, msg: &str);
 //! }
 //!
@@ -140,6 +146,8 @@
 //! ## Circular Dependency Detection
 //!
 //! ```rust
+//! use sadi::Container;
+//! 
 //! struct A;
 //! struct B;
 //!
@@ -193,6 +201,8 @@ impl Container {
     ///
     /// # Example
     /// ```
+    /// use sadi::Container;
+    /// 
     /// let c = Container::new();
     /// assert!(!c.has::<i32>());
     /// ```
