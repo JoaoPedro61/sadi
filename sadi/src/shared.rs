@@ -20,9 +20,9 @@
 //! ## Non-thread-safe mode (default)
 //! ```rust
 //! use sadi::Shared;
-//! use std::rc::Rc;
+//! use std::sync::Arc;
 //!
-//! let x: Rc<u32> = Rc::new(42);
+//! let x: Arc<u32> = Arc::new(42);
 //! let y: Shared<u32> = x.clone();
 //! assert_eq!(*y, 42);
 //! ```
@@ -30,14 +30,15 @@
 //! ## Using IntoShared for trait objects
 //! ```rust
 //! use sadi::{Shared, IntoShared};
-//! use std::rc::Rc;
+//! use std::sync::Arc;
 //!
 //! trait Foo { fn foo(&self) -> i32; }
 //! struct Bar;
 //! impl Foo for Bar { fn foo(&self) -> i32 { 7 } }
 //!
-//! let rc: Rc<Bar> = Rc::new(Bar);
-//! let shared: Shared<dyn Foo> = rc.into_shared();
+//! let arc: Arc<dyn Foo> = Arc::new(Bar);
+//! let shared: Shared<dyn Foo> = arc.into_shared();
+//! 
 //! assert_eq!(shared.foo(), 7);
 //! ```
 //!
@@ -61,12 +62,17 @@ pub use std::rc::Rc as Shared;
 ///
 /// ```rust
 /// use sadi::{Shared, IntoShared};
-/// use std::rc::Rc;
+/// use std::sync::Arc;
+/// 
 /// trait Foo { fn foo(&self) -> i32; }
+/// 
 /// struct Bar;
+/// 
 /// impl Foo for Bar { fn foo(&self) -> i32 { 7 } }
-/// let rc: Rc<Bar> = Rc::new(Bar);
-/// let shared: Shared<dyn Foo> = rc.into_shared();
+/// 
+/// let arc: Arc<dyn Foo> = Arc::new(Bar);
+/// let shared: Shared<dyn Foo> = arc.into_shared();
+/// 
 /// assert_eq!(shared.foo(), 7);
 /// ```
 pub trait IntoShared<T: ?Sized + 'static> {

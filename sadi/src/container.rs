@@ -72,7 +72,7 @@
 //!
 //! let c = Container::new();
 //!
-//! c.bind_abstract::<dyn Repo, _, _>(|_| Arc::new(RepoImpl)).unwrap();
+//! c.bind_abstract::<dyn Repo, _, _>(|_| Arc::new(RepoImpl) as Arc<dyn Repo>).unwrap();
 //!
 //! let repo = c.resolve::<dyn Repo>().unwrap();
 //! assert_eq!(repo.n(), 42);
@@ -127,7 +127,7 @@
 //!
 //! let c = Container::new();
 //!
-//! c.bind_abstract::<dyn Logger, _, _>(|_| ConsoleLogger).unwrap();
+//! c.bind_abstract::<dyn Logger, _, _>(|_| ConsoleLogger as Arc<dyn Logger>).unwrap();
 //!
 //! c.bind_concrete::<UserRepository, UserRepository, _>(|c| {
 //!     let logger = c.resolve::<dyn Logger>().unwrap();
@@ -148,7 +148,10 @@
 //! ```rust
 //! use sadi::Container;
 //! 
+//! #[derive(Debug)]
 //! struct A;
+//! 
+//! #[derive(Debug)]
 //! struct B;
 //!
 //! let c = Container::new();
