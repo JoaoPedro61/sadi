@@ -4,11 +4,10 @@
 //! (such as provider functions, instance cells, and factory maps) depending on
 //! the `thread-safe` feature flag. These types are used internally by the DI
 //! container to manage service registration and resolution.
-use std::{any::TypeId, collections::HashMap};
 use crate::Shared;
+use std::{any::TypeId, collections::HashMap};
 
 use crate::Container;
-
 
 /// Type alias for a service provider (factory function).
 ///
@@ -21,7 +20,6 @@ pub type Provider<T> = Box<dyn Fn(&Container) -> Shared<T> + Send + Sync + 'stat
 #[cfg(not(feature = "thread-safe"))]
 pub type Provider<T> = Box<dyn Fn(&Container) -> Shared<T> + 'static>;
 
-
 /// Type alias for a cell holding a singleton/shared instance.
 ///
 /// - In thread-safe mode, uses `Mutex` for safe concurrent access.
@@ -30,7 +28,6 @@ pub type Provider<T> = Box<dyn Fn(&Container) -> Shared<T> + 'static>;
 pub type InstanceCell<T> = std::sync::Mutex<Option<Shared<T>>>;
 #[cfg(not(feature = "thread-safe"))]
 pub type InstanceCell<T> = std::cell::RefCell<Option<Shared<T>>>;
-
 
 /// Type alias for the map storing all registered service factories.
 ///

@@ -20,13 +20,13 @@
 //! }
 //!
 //! let provider = Box::new(|_c: &Container| Shared::new(Counter(Cell::new(0))));
-//! 
+//!
 //! let f = Factory::new(provider, false); // singleton
 //! let c = Container::new();
-//! 
+//!
 //! let a = f.provide(&c);
 //! let b = f.provide(&c);
-//! 
+//!
 //! assert!(!Shared::ptr_eq(&a, &b)); // same instances
 //! ```
 //!

@@ -54,16 +54,12 @@ macro_rules! bind {
 
     // Register a concrete instance
     ($container:expr, instance $token:ty => $instance:expr) => {{
-        $container
-            .bind_instance::<$token, _>($instance)
-            .unwrap();
+        $container.bind_instance::<$token, _>($instance).unwrap();
     }};
 
     // Register a transient concrete factory
     ($container:expr, $token:ty => $factory:expr) => {{
-        $container
-            .bind_concrete::<$token, _, _>($factory)
-            .unwrap();
+        $container.bind_concrete::<$token, _, _>($factory).unwrap();
     }};
 }
 
@@ -98,9 +94,15 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    trait Foo: Send + Sync { fn val(&self) -> i32; }
+    trait Foo: Send + Sync {
+        fn val(&self) -> i32;
+    }
     struct Bar;
-    impl Foo for Bar { fn val(&self) -> i32 { 42 } }
+    impl Foo for Bar {
+        fn val(&self) -> i32 {
+            42
+        }
+    }
 
     struct Baz;
 

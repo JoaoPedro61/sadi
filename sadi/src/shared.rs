@@ -38,16 +38,16 @@
 //!
 //! let arc: Arc<dyn Foo> = Arc::new(Bar);
 //! let shared: Shared<dyn Foo> = arc.into_shared();
-//! 
+//!
 //! assert_eq!(shared.foo(), 7);
 //! ```
 //!
 
 // Shared<T> is Arc<T> in thread-safe mode, Rc<T> otherwise.
-#[cfg(feature = "thread-safe")]
-pub use std::sync::Arc as Shared;
 #[cfg(not(feature = "thread-safe"))]
 pub use std::rc::Rc as Shared;
+#[cfg(feature = "thread-safe")]
+pub use std::sync::Arc as Shared;
 
 /// Trait to convert provider return types into `Shared<T>`.
 ///
@@ -63,16 +63,16 @@ pub use std::rc::Rc as Shared;
 /// ```rust
 /// use sadi::{Shared, IntoShared};
 /// use std::sync::Arc;
-/// 
+///
 /// trait Foo { fn foo(&self) -> i32; }
-/// 
+///
 /// struct Bar;
-/// 
+///
 /// impl Foo for Bar { fn foo(&self) -> i32 { 7 } }
-/// 
+///
 /// let arc: Arc<dyn Foo> = Arc::new(Bar);
 /// let shared: Shared<dyn Foo> = arc.into_shared();
-/// 
+///
 /// assert_eq!(shared.foo(), 7);
 /// ```
 pub trait IntoShared<T: ?Sized + 'static> {

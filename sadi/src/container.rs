@@ -60,7 +60,7 @@
 //! ```rust
 //! use sadi::Container;
 //! use std::sync::Arc;
-//! 
+//!
 //! trait Repo: Send + Sync {
 //!     fn n(&self) -> i32;
 //! }
@@ -102,7 +102,7 @@
 //! ```rust
 //! use sadi::Container;
 //! use std::sync::Arc;
-//! 
+//!
 //! trait Logger: Send + Sync {
 //!     fn log(&self, msg: &str);
 //! }
@@ -149,10 +149,10 @@
 //! ```rust,ignore
 //! use sadi::Container;
 //! use std::sync::Arc;
-//! 
+//!
 //! #[derive(Debug)]
 //! struct A;
-//! 
+//!
 //! #[derive(Debug)]
 //! struct B;
 //!
@@ -207,13 +207,12 @@ impl Default for Container {
 
 #[cfg(feature = "thread-safe")]
 impl Container {
-
     /// Creates a new thread-safe container backed by `RwLock<HashMap>`.
     ///
     /// # Example
     /// ```
     /// use sadi::Container;
-    /// 
+    ///
     /// let c = Container::new();
     /// assert!(!c.has::<i32>());
     /// ```
@@ -232,10 +231,7 @@ impl Container {
         R: IntoShared<T> + 'static,
         F: Fn(&Container) -> R + Send + Sync + 'static,
     {
-        self.bind_internal(
-            Box::new(move |c| provider(c).into_shared()),
-            false,
-        )
+        self.bind_internal(Box::new(move |c| provider(c).into_shared()), false)
     }
 
     /// Registers a **singleton** abstract binding.
@@ -245,10 +241,7 @@ impl Container {
         R: IntoShared<T> + 'static,
         F: Fn(&Container) -> R + Send + Sync + 'static,
     {
-        self.bind_internal(
-            Box::new(move |c| provider(c).into_shared()),
-            true,
-        )
+        self.bind_internal(Box::new(move |c| provider(c).into_shared()), true)
     }
 
     /// Registers a concrete implementation automatically wrapped in `Arc`.
@@ -281,15 +274,11 @@ impl Container {
     {
         let shared = instance.into_shared();
 
-        self.bind_internal(
-            Box::new(move |_| shared.clone()),
-            true,
-        )
+        self.bind_internal(Box::new(move |_| shared.clone()), true)
     }
 
     /// Internal binding logic shared by all binding methods.
-    fn bind_internal<T>(&self, provider: Provider<T>, singleton: bool)
-        -> Result<(), Error>
+    fn bind_internal<T>(&self, provider: Provider<T>, singleton: bool) -> Result<(), Error>
     where
         T: ?Sized + Send + Sync + 'static,
     {
@@ -326,7 +315,8 @@ impl Container {
         let _guard = crate::ResolveGuard::push(name)?;
 
         let map = self.factories.read().unwrap();
-        let boxed = map.get(&id)
+        let boxed = map
+            .get(&id)
             .ok_or_else(|| Error::service_not_registered(name, "factory"))?;
 
         let factory = boxed
@@ -354,7 +344,6 @@ impl Container {
 
 #[cfg(not(feature = "thread-safe"))]
 impl Container {
-
     /// Creates a new non-thread-safe container backed by `RefCell<HashMap>`.
     ///
     /// # Example
@@ -424,8 +413,7 @@ impl Container {
     }
 
     /// Internal binding logic shared by all binding methods.
-    fn bind_internal<T>(&self, provider: Provider<T>, singleton: bool)
-        -> Result<(), Error>
+    fn bind_internal<T>(&self, provider: Provider<T>, singleton: bool) -> Result<(), Error>
     where
         T: ?Sized + 'static,
     {
@@ -460,7 +448,8 @@ impl Container {
         let _guard = crate::ResolveGuard::push(name)?;
 
         let map = self.factories.borrow();
-        let boxed = map.get(&id)
+        let boxed = map
+            .get(&id)
             .ok_or_else(|| Error::service_not_registered(name, "factory"))?;
 
         let factory = boxed

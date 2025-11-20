@@ -1,4 +1,4 @@
-use sadi::{container, bind, Container, Error, Shared};
+use sadi::{Container, Error, Shared, bind, container};
 
 // Example services to demonstrate dependency injection
 
@@ -241,10 +241,7 @@ fn main() -> Result<(), Error> {
 
     println!("📋 Config1: {}", config1.get_info());
     println!("📋 Config2: {}", config2.get_info());
-    println!(
-        "🔄 Same instance? {}",
-        Shared::ptr_eq(&config1, &config2)
-    );
+    println!("🔄 Same instance? {}", Shared::ptr_eq(&config1, &config2));
 
     // Use the application
     println!("\n--- Application Usage ---");
@@ -299,7 +296,9 @@ fn main() -> Result<(), Error> {
 
     // Try to register a duplicate factory
     let new_container = Container::new();
-    new_container.bind_concrete::<String, String, _>(|_| "first".to_string()).unwrap();
+    new_container
+        .bind_concrete::<String, String, _>(|_| "first".to_string())
+        .unwrap();
     match new_container.bind_concrete::<String, String, _>(|_| "duplicate".to_string()) {
         Ok(_) => println!("This shouldn't happen either"),
         Err(e) => println!("❌ Expected error: {}", e),
@@ -323,9 +322,19 @@ mod tests {
     #[test]
     fn test_container_setup() {
         let c = Container::new();
-        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new()).unwrap();
-        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| DatabaseService::new(c.resolve::<ConfigService>().unwrap())).unwrap();
-        c.bind_concrete::<LoggerService, LoggerService, _>(|c| LoggerService::new(c.resolve::<DatabaseService>().unwrap(), c.resolve::<ConfigService>().unwrap())).unwrap();
+        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new())
+            .unwrap();
+        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| {
+            DatabaseService::new(c.resolve::<ConfigService>().unwrap())
+        })
+        .unwrap();
+        c.bind_concrete::<LoggerService, LoggerService, _>(|c| {
+            LoggerService::new(
+                c.resolve::<DatabaseService>().unwrap(),
+                c.resolve::<ConfigService>().unwrap(),
+            )
+        })
+        .unwrap();
 
         let logger = c.resolve::<LoggerService>().unwrap();
         logger.log("TEST", "Container setup works!");
@@ -334,7 +343,8 @@ mod tests {
     #[test]
     fn test_singleton_sharing() {
         let c = Container::new();
-        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new()).unwrap();
+        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new())
+            .unwrap();
 
         let config1 = c.resolve::<ConfigService>().unwrap();
         let config2 = c.resolve::<ConfigService>().unwrap();
@@ -346,9 +356,19 @@ mod tests {
     #[test]
     fn test_transient_behavior() {
         let c = Container::new();
-        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new()).unwrap();
-        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| DatabaseService::new(c.resolve::<ConfigService>().unwrap())).unwrap();
-        c.bind_concrete::<LoggerService, LoggerService, _>(|c| LoggerService::new(c.resolve::<DatabaseService>().unwrap(), c.resolve::<ConfigService>().unwrap())).unwrap();
+        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new())
+            .unwrap();
+        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| {
+            DatabaseService::new(c.resolve::<ConfigService>().unwrap())
+        })
+        .unwrap();
+        c.bind_concrete::<LoggerService, LoggerService, _>(|c| {
+            LoggerService::new(
+                c.resolve::<DatabaseService>().unwrap(),
+                c.resolve::<ConfigService>().unwrap(),
+            )
+        })
+        .unwrap();
 
         let logger1 = c.resolve::<LoggerService>().unwrap();
         let logger2 = c.resolve::<LoggerService>().unwrap();
@@ -363,12 +383,41 @@ mod tests {
     #[test]
     fn test_user_registration() {
         let c = Container::new();
-        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new()).unwrap();
-        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| DatabaseService::new(c.resolve::<ConfigService>().unwrap())).unwrap();
-        c.bind_concrete::<LoggerService, LoggerService, _>(|c| LoggerService::new(c.resolve::<DatabaseService>().unwrap(), c.resolve::<ConfigService>().unwrap())).unwrap();
-        c.bind_concrete::<UserService, UserService, _>(|c| UserService::new(c.resolve::<DatabaseService>().unwrap(), c.resolve::<LoggerService>().unwrap())).unwrap();
-        c.bind_concrete::<EmailService, EmailService, _>(|c| EmailService::new(c.resolve::<ConfigService>().unwrap(), c.resolve::<LoggerService>().unwrap())).unwrap();
-        c.bind_concrete::<ApplicationService, ApplicationService, _>(|c| ApplicationService::new(c.resolve::<UserService>().unwrap(), c.resolve::<EmailService>().unwrap(), c.resolve::<ConfigService>().unwrap())).unwrap();
+        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new())
+            .unwrap();
+        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| {
+            DatabaseService::new(c.resolve::<ConfigService>().unwrap())
+        })
+        .unwrap();
+        c.bind_concrete::<LoggerService, LoggerService, _>(|c| {
+            LoggerService::new(
+                c.resolve::<DatabaseService>().unwrap(),
+                c.resolve::<ConfigService>().unwrap(),
+            )
+        })
+        .unwrap();
+        c.bind_concrete::<UserService, UserService, _>(|c| {
+            UserService::new(
+                c.resolve::<DatabaseService>().unwrap(),
+                c.resolve::<LoggerService>().unwrap(),
+            )
+        })
+        .unwrap();
+        c.bind_concrete::<EmailService, EmailService, _>(|c| {
+            EmailService::new(
+                c.resolve::<ConfigService>().unwrap(),
+                c.resolve::<LoggerService>().unwrap(),
+            )
+        })
+        .unwrap();
+        c.bind_concrete::<ApplicationService, ApplicationService, _>(|c| {
+            ApplicationService::new(
+                c.resolve::<UserService>().unwrap(),
+                c.resolve::<EmailService>().unwrap(),
+                c.resolve::<ConfigService>().unwrap(),
+            )
+        })
+        .unwrap();
 
         let app = c.resolve::<ApplicationService>().unwrap();
         let result = app.register_user("Test User", "test@example.com");
