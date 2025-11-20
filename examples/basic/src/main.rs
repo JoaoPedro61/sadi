@@ -1,4 +1,4 @@
-use sadi::{Container, Error, Shared, bind, container};
+use sadi::{Container, Error, Shared, container};
 
 // Example services to demonstrate dependency injection
 

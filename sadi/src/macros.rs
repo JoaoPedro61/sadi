@@ -88,36 +88,3 @@ macro_rules! container {
         container
     }};
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-
-    trait Foo: Send + Sync {
-        fn val(&self) -> i32;
-    }
-    struct Bar;
-    impl Foo for Bar {
-        fn val(&self) -> i32 {
-            42
-        }
-    }
-
-    struct Baz;
-
-    #[test]
-    fn macro_container_and_bind() {
-        // This test assumes the existence of the relevant bind_* methods on Container.
-        // It is a compile-check for macro expansion and will need real methods to pass.
-        // let c = container! {
-        //     bind(dyn Foo => |_c| Bar)
-        //     bind(singleton dyn Foo => |_c| Bar)
-        //     bind(singleton Baz => |_c| Baz)
-        //     bind(instance Baz => Baz)
-        //     bind(Bar => |_c| Bar)
-        // };
-        // let foo: Arc<dyn Foo> = c.resolve::<dyn Foo>().unwrap();
-        // assert_eq!(foo.val(), 42);
-    }
-}

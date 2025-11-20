@@ -486,7 +486,7 @@ mod tests {
         let c = Container::new();
         c.bind_concrete::<S, S, _>(|_c| S(7)).unwrap();
         let s = c.resolve::<S>().unwrap();
-        assert_eq!((*s).0, 7);
+        assert_eq!(s.0, 7);
     }
 
     #[test]

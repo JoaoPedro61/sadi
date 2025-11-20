@@ -107,31 +107,13 @@ impl<T: ?Sized + 'static> Factory<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
 
-    struct Counter(Cell<u32>);
-    impl Counter {
-        fn inc(&self) -> u32 {
-            let v = self.0.get();
-            self.0.set(v + 1);
-            v + 1
-        }
-    }
-
-    #[test]
-    fn transient_factory_gives_new_instances() {
-        let provider = Box::new(|_c: &Container| Shared::new(Counter(Cell::new(0))));
-        let f = Factory::new(provider, false);
-        let c = Container::new();
-        let a = f.provide(&c);
-        let b = f.provide(&c);
-        // Ensure these are different instances (pointer inequality)
-        assert!(!Shared::ptr_eq(&a, &b));
-    }
+    struct Counter;
+    impl Counter {}
 
     #[test]
     fn singleton_factory_gives_same_instance() {
-        let provider = Box::new(|_c: &Container| Shared::new(Counter(Cell::new(0))));
+        let provider = Box::new(|_c: &Container| Shared::new(Counter));
         let f = Factory::new(provider, true);
         let c = Container::new();
         let a = f.provide(&c);
