@@ -318,19 +318,21 @@ cargo clippy -- -D warnings
 - [ ] **Async Circular Detection**: Proper handling in async contexts
 
 ### 🧵 Thread Safety
-- [ ] **Arc-based Container**: Thread-safe version of SaDi using `Arc` instead of `Rc`
-- [ ] **Send + Sync Services**: Support for services that implement `Send + Sync`
-- [ ] **Concurrent Access**: Multiple threads accessing services simultaneously
+- [x] **Arc-based Container**: Thread-safe version of SaDi using `Arc` instead of `Rc` (implemented behind the `thread-safe` feature)
+- [x] **Send + Sync Services**: Support for `Send + Sync` services in thread-safe mode (enforced by API bounds)
+- [x] **Concurrent Access**: Concurrent reads/writes supported via `RwLock`/`Mutex` in thread-safe mode
 - [ ] **Lock-free Operations**: Minimize contention in high-concurrency scenarios
+
 
 ### 🔧 Advanced Features
 - [ ] **Service Scoping**: Request-scoped, thread-scoped service lifetimes
-- [ ] **Lazy Initialization**: Defer singleton creation until first access
+- [x] **Lazy Initialization**: Singleton instances are created on first `provide` (implemented in `Factory`)
 - [ ] **Service Decorators**: Middleware/decoration patterns for services
 - [ ] **Conditional Registration**: Register services based on runtime conditions
 - [ ] **Service Health Checks**: Built-in health monitoring for services
 - [ ] **Service Metrics**: Performance and usage statistics
 - [ ] **Hot Reloading**: Dynamic service replacement without container restart
+
 
 ### 📦 Ecosystem Integration
 - [ ] **Tokio Integration**: First-class support for Tokio runtime
@@ -338,6 +340,7 @@ cargo clippy -- -D warnings
 - [ ] **Axum Integration**: Support for Axum web framework
 - [ ] **Tower Service**: Implement Tower service trait
 - [ ] **Serde Support**: Serialize/deserialize container configuration
+
 
 ### 🛠️ Developer Experience
 - [ ] **Derive Macros**: Auto-generate factory functions from service structs
@@ -352,11 +355,13 @@ cargo clippy -- -D warnings
 - [ ] **Graceful Shutdown**: Proper cleanup on container disposal
 - [ ] **Fault Tolerance**: Circuit breaker pattern for failing services
 
+
 ### 📊 Observability
 - [ ] **OpenTelemetry**: Built-in telemetry and distributed tracing
 - [ ] **Prometheus Metrics**: Expose container metrics for monitoring
 - [ ] **Service Discovery**: Integration with service discovery systems
 - [ ] **Health Endpoints**: HTTP endpoints for container health checks
+
 
 ### 🎯 Performance
 - [ ] **Compile-time DI**: Zero-runtime-cost dependency injection
