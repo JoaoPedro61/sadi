@@ -325,7 +325,7 @@ cargo clippy -- -D warnings
 - [x] **Lazy Initialization**: Singleton instances are created on first `provide` (implemented in `Factory`)
 - [ ] **Service Decorators**: Middleware/decoration patterns for services
 - [ ] **Conditional Registration**: Register services based on runtime conditions
-- [ ] **Service Health Checks**: Built-in health monitoring for services
+- [ ] **Service Health Checks**: Verify singleton services are healthy before returning them
 - [ ] **Service Metrics**: Performance and usage statistics
 
 ### 📦 Ecosystem Integration
@@ -343,16 +343,14 @@ cargo clippy -- -D warnings
 - [ ] **Container Visualization**: Graphical representation of service dependencies
 
 ### 🔒 Security & Reliability
-- [ ] **Service Isolation**: Sandboxing for untrusted services
-- [ ] **Resource Limits**: Memory and CPU limits per service
+- [ ] **Concurrency Limits**: Limit concurrent service creations per binding
 - [ ] **Graceful Shutdown**: Proper cleanup on container disposal
-- [ ] **Fault Tolerance**: Circuit breaker pattern for failing services
+- [ ] **Retry Policies**: Retry factory invocation on transient failures
 
 ### 📊 Observability
 - [ ] **OpenTelemetry**: Built-in telemetry and distributed tracing
 - [ ] **Prometheus Metrics**: Expose container metrics for monitoring
 - [ ] **Service Discovery**: Integration with service discovery systems
-- [ ] **Health Endpoints**: HTTP endpoints for container health checks
 
 ### 🎯 Performance
 - [ ] **Compile-time validation / Builder checks**: Improve compile-time validation and builder-time checks for dependency graphs
