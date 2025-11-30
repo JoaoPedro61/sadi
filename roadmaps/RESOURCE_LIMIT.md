@@ -112,7 +112,3 @@ c.bind_concrete_with_limits::<LoggerService, LoggerService, _>(
 - Async-first integration using `tokio::Semaphore` and configurable timeouts.
 - Advanced policies: queue + priority, evict/recycle.
 - Observability: Prometheus metrics for limiter usage.
-
----
-
-If you agree with the minimal approach (A) focused on concurrency limiting with `Deny`/`Block` policies, I will proceed with the implementation: add the `resource_limits` module, update `Factory` and `Container::bind_*` to accept limits, add tests, and update the README with examples. If you prefer the full variant (B), tell me and I'll outline the additional effort and steps.
