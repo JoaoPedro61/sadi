@@ -183,7 +183,7 @@ use std::cell::RefCell;
 #[cfg(not(feature = "thread-safe"))]
 use std::rc::Rc;
 
-use crate::{Error, FactoriesMap, Factory, IntoShared, Provider, Shared};
+use crate::{Error, FactoriesMap, Factory, IntoShared, Limits, Provider, Shared};
 
 /// The IoC/DI container.
 ///
@@ -298,6 +298,109 @@ impl Container {
         Ok(())
     }
 
+    /// Registers an **abstract binding** with resource limits.
+    ///
+    /// Instances are **not cached** (transient).
+    /// Limits control concurrent creation requests.
+    pub fn bind_abstract_with_limits<T, R, F>(&self, provider: F, limits: Limits) -> Result<(), Error>
+    where
+        T: ?Sized + 'static + Send + Sync,
+        R: IntoShared<T> + 'static,
+        F: Fn(&Container) -> R + Send + Sync + 'static,
+    {
+        self.bind_internal_with_limits(
+            Box::new(move |c| provider(c).into_shared()),
+            false,
+            limits,
+        )
+    }
+
+    /// Registers a **singleton** abstract binding with resource limits.
+    pub fn bind_abstract_singleton_with_limits<T, R, F>(
+        &self,
+        provider: F,
+        limits: Limits,
+    ) -> Result<(), Error>
+    where
+        T: ?Sized + 'static + Send + Sync,
+        R: IntoShared<T> + 'static,
+        F: Fn(&Container) -> R + Send + Sync + 'static,
+    {
+        self.bind_internal_with_limits(
+            Box::new(move |c| provider(c).into_shared()),
+            true,
+            limits,
+        )
+    }
+
+    /// Registers a concrete implementation with resource limits, automatically wrapped in `Arc`.
+    pub fn bind_concrete_with_limits<T, U, F>(&self, provider: F, limits: Limits) -> Result<(), Error>
+    where
+        T: 'static + Send + Sync,
+        U: 'static,
+        F: Fn(&Container) -> U + Send + Sync + 'static,
+        Arc<U>: Into<Arc<T>>,
+    {
+        self.bind_abstract_with_limits::<T, _, _>(move |c| Arc::new(provider(c)).into(), limits)
+    }
+
+    /// Singleton version of [`bind_concrete_with_limits`].
+    pub fn bind_concrete_singleton_with_limits<T, U, F>(
+        &self,
+        provider: F,
+        limits: Limits,
+    ) -> Result<(), Error>
+    where
+        T: 'static + Send + Sync,
+        U: 'static,
+        F: Fn(&Container) -> U + Send + Sync + 'static,
+        Arc<U>: Into<Arc<T>>,
+    {
+        self.bind_abstract_singleton_with_limits::<T, _, _>(
+            move |c| Arc::new(provider(c)).into(),
+            limits,
+        )
+    }
+
+    /// Registers an already created instance as a singleton with resource limits.
+    pub fn bind_instance_with_limits<T, R>(&self, instance: R, limits: Limits) -> Result<(), Error>
+    where
+        T: ?Sized + Send + Sync + 'static,
+        R: IntoShared<T> + 'static,
+    {
+        let shared = instance.into_shared();
+
+        self.bind_internal_with_limits(Box::new(move |_| shared.clone()), true, limits)
+    }
+
+    /// Internal binding logic with limits support.
+    fn bind_internal_with_limits<T>(
+        &self,
+        provider: Provider<T>,
+        singleton: bool,
+        limits: Limits,
+    ) -> Result<(), Error>
+    where
+        T: ?Sized + Send + Sync + 'static,
+    {
+        let id = TypeId::of::<T>();
+        let name = std::any::type_name::<T>();
+
+        let mut map = self.factories.write().unwrap();
+
+        if map.contains_key(&id) {
+            return Err(Error::factory_already_registered(name, "factory"));
+        }
+
+        let factory = Factory::with_limits(provider, singleton, limits)?;
+
+        map.insert(id, Box::new(factory));
+
+        Ok(())
+    }
+
+    /// Registers an instance as a singleton.
+
     /// Resolves a previously registered binding.
     ///
     /// Performs:
@@ -323,7 +426,7 @@ impl Container {
             .downcast_ref::<Factory<T>>()
             .ok_or_else(|| Error::type_mismatch(name))?;
 
-        Ok(factory.provide(self))
+        factory.provide(self)
     }
 
     /// Returns `true` if a type has been registered.
@@ -412,6 +515,107 @@ impl Container {
         self.bind_internal(Box::new(move |_| shared.clone()), true)
     }
 
+    /// Registers an **abstract binding** with resource limits.
+    ///
+    /// Instances are **not cached** (transient).
+    /// Limits control concurrent creation requests.
+    pub fn bind_abstract_with_limits<T, R, F>(&self, provider: F, limits: Limits) -> Result<(), Error>
+    where
+        T: ?Sized + 'static,
+        R: IntoShared<T> + 'static,
+        F: Fn(&Container) -> R + 'static,
+    {
+        self.bind_internal_with_limits(
+            Box::new(move |c| provider(c).into_shared()),
+            false,
+            limits,
+        )
+    }
+
+    /// Registers a **singleton** abstract binding with resource limits.
+    pub fn bind_abstract_singleton_with_limits<T, R, F>(
+        &self,
+        provider: F,
+        limits: Limits,
+    ) -> Result<(), Error>
+    where
+        T: ?Sized + 'static,
+        R: IntoShared<T> + 'static,
+        F: Fn(&Container) -> R + 'static,
+    {
+        self.bind_internal_with_limits(
+            Box::new(move |c| provider(c).into_shared()),
+            true,
+            limits,
+        )
+    }
+
+    /// Registers a concrete implementation with resource limits, automatically wrapped in `Rc`.
+    pub fn bind_concrete_with_limits<T, U, F>(&self, provider: F, limits: Limits) -> Result<(), Error>
+    where
+        T: 'static,
+        U: 'static,
+        F: Fn(&Container) -> U + 'static,
+        Rc<U>: Into<Rc<T>>,
+    {
+        self.bind_abstract_with_limits::<T, _, _>(move |c| Rc::new(provider(c)).into(), limits)
+    }
+
+    /// Singleton version of [`bind_concrete_with_limits`].
+    pub fn bind_concrete_singleton_with_limits<T, U, F>(
+        &self,
+        provider: F,
+        limits: Limits,
+    ) -> Result<(), Error>
+    where
+        T: 'static,
+        U: 'static,
+        F: Fn(&Container) -> U + 'static,
+        Rc<U>: Into<Rc<T>>,
+    {
+        self.bind_abstract_singleton_with_limits::<T, _, _>(
+            move |c| Rc::new(provider(c)).into(),
+            limits,
+        )
+    }
+
+    /// Registers an already created instance as a singleton with resource limits.
+    pub fn bind_instance_with_limits<T, R>(&self, instance: R, limits: Limits) -> Result<(), Error>
+    where
+        T: ?Sized + 'static,
+        R: IntoShared<T> + 'static,
+    {
+        let shared = instance.into_shared();
+
+        self.bind_internal_with_limits(Box::new(move |_| shared.clone()), true, limits)
+    }
+
+    /// Internal binding logic with limits support.
+    fn bind_internal_with_limits<T>(
+        &self,
+        provider: Provider<T>,
+        singleton: bool,
+        limits: Limits,
+    ) -> Result<(), Error>
+    where
+        T: ?Sized + 'static,
+    {
+        let id = TypeId::of::<T>();
+        let name = std::any::type_name::<T>();
+
+        let mut map = self.factories.borrow_mut();
+
+        if map.contains_key(&id) {
+            return Err(Error::factory_already_registered(name, "factory"));
+        }
+
+        let factory = Factory::with_limits(provider, singleton, limits)?;
+
+        map.insert(id, Box::new(factory));
+
+        Ok(())
+    }
+
     /// Internal binding logic shared by all binding methods.
     fn bind_internal<T>(&self, provider: Provider<T>, singleton: bool) -> Result<(), Error>
     where
@@ -456,7 +660,7 @@ impl Container {
             .downcast_ref::<Factory<T>>()
             .ok_or_else(|| Error::type_mismatch(name))?;
 
-        Ok(factory.provide(self))
+        factory.provide(self)
     }
 
     /// Returns whether type `T` has a registered factory.

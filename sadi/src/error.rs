@@ -38,6 +38,12 @@ pub enum ErrorKind {
     /// such as A depends on B, B depends on C, and C depends on A.
     /// The error message will include the full dependency chain.
     CircularDependency,
+
+    /// Resource limit exceeded for a service binding.
+    ///
+    /// This occurs when concurrent service creation limits are exceeded
+    /// and the policy is set to Deny.
+    ResourceLimitExceeded,
 }
 
 /// Error structure for SaDi dependency injection operations.
@@ -215,6 +221,35 @@ impl Error {
             format!(
                 "Circular dependency detected: {}",
                 dependency_chain.join(" -> ")
+            ),
+        )
+    }
+
+    /// Create a resource limit exceeded error.
+    ///
+    /// This error occurs when a service binding has reached its concurrent
+    /// creation limit and the policy is set to Deny.
+    ///
+    /// # Arguments
+    ///
+    /// * `type_name` - The name of the type that exceeded limits
+    /// * `reason` - Description of why the limit was exceeded
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sadi::Error;
+    ///
+    /// let error = Error::resource_limit_exceeded("DatabasePool", "max concurrent creations reached");
+    /// println!("{}", error);
+    /// // Output: (ResourceLimitExceeded) - Resource limit exceeded for DatabasePool: max concurrent creations reached
+    /// ```
+    pub fn resource_limit_exceeded(type_name: &str, reason: &str) -> Self {
+        Self::new(
+            ErrorKind::ResourceLimitExceeded,
+            format!(
+                "Resource limit exceeded for {}: {}",
+                type_name, reason
             ),
         )
     }
