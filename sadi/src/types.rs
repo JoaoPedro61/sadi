@@ -7,6 +7,9 @@
 use crate::Shared;
 use std::{any::TypeId, collections::HashMap};
 
+#[cfg(feature = "async")]
+use futures::future::BoxFuture;
+
 use crate::Container;
 
 /// Type alias for a service provider (factory function).
@@ -15,18 +18,20 @@ use crate::Container;
 /// - In single-threaded mode, only `'static` is required.
 ///
 /// The provider receives a reference to the container and returns a shared instance.
-#[cfg(feature = "thread-safe")]
+#[cfg(all(feature = "thread-safe", not(feature = "async")))]
 pub type Provider<T> = Box<dyn Fn(&Container) -> Shared<T> + Send + Sync + 'static>;
-#[cfg(not(feature = "thread-safe"))]
+#[cfg(all(feature = "async"))]
+pub type Provider<T> = Box<dyn Fn(&Container) -> BoxFuture<'static, Shared<T>> + Send + Sync + 'static>;
+#[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
 pub type Provider<T> = Box<dyn Fn(&Container) -> Shared<T> + 'static>;
 
 /// Type alias for a cell holding a singleton/shared instance.
 ///
 /// - In thread-safe mode, uses `Mutex` for safe concurrent access.
 /// - In single-threaded mode, uses `RefCell` for fast interior mutability.
-#[cfg(feature = "thread-safe")]
+#[cfg(any(feature = "thread-safe", feature = "async"))]
 pub type InstanceCell<T> = std::sync::Mutex<Option<Shared<T>>>;
-#[cfg(not(feature = "thread-safe"))]
+#[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
 pub type InstanceCell<T> = std::cell::RefCell<Option<Shared<T>>>;
 
 /// Type alias for the map storing all registered service factories.
@@ -34,7 +39,7 @@ pub type InstanceCell<T> = std::cell::RefCell<Option<Shared<T>>>;
 /// - In thread-safe mode, uses `RwLock` for concurrent reads/writes and requires
 ///   all stored factories to be `Send + Sync`.
 /// - In single-threaded mode, uses `RefCell` for fast interior mutability.
-#[cfg(feature = "thread-safe")]
+#[cfg(any(feature = "thread-safe", feature = "async"))]
 pub type FactoriesMap = std::sync::RwLock<HashMap<TypeId, Box<dyn std::any::Any + Send + Sync>>>;
-#[cfg(not(feature = "thread-safe"))]
+#[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
 pub type FactoriesMap = std::cell::RefCell<HashMap<TypeId, Box<dyn std::any::Any>>>;
