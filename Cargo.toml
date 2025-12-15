@@ -1,5 +1,5 @@
 [workspace]
-members = ["sadi", "examples/*"]
+members = ["sadi", "examples/basic", "examples/async_example"]
 default-members = ["sadi"]
 resolver = "2"
 

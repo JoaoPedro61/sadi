@@ -13,9 +13,12 @@ authors.workspace = true
 
 [dependencies]
 tracing = { version = "0.1.41", optional = true }
+tokio = { version = "1.35", features = ["sync", "macros", "rt-multi-thread"], optional = true }
+lazy_static = { version = "1.4", optional = true }
 
 [features]
 default = ["thread-safe", "tracing"]
 
 thread-safe = []
 tracing = ["dep:tracing"]
+async = ["dep:tokio", "dep:lazy_static"]
