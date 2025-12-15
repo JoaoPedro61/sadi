@@ -44,9 +44,9 @@
 //!
 
 // Shared<T> is Arc<T> in thread-safe mode, Rc<T> otherwise.
-#[cfg(not(feature = "thread-safe"))]
+#[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
 pub use std::rc::Rc as Shared;
-#[cfg(feature = "thread-safe")]
+#[cfg(any(feature = "thread-safe", feature = "async"))]
 pub use std::sync::Arc as Shared;
 
 /// Trait to convert provider return types into `Shared<T>`.
@@ -79,7 +79,7 @@ pub trait IntoShared<T: ?Sized + 'static> {
     fn into_shared(self) -> Shared<T>;
 }
 
-#[cfg(feature = "thread-safe")]
+#[cfg(any(feature = "thread-safe", feature = "async"))]
 mod shared_impl_ts {
     use super::*;
     use std::sync::Arc;
@@ -95,7 +95,7 @@ mod shared_impl_ts {
     }
 }
 
-#[cfg(not(feature = "thread-safe"))]
+#[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
 mod shared_impl_nts {
     use super::*;
     use std::rc::Rc;
