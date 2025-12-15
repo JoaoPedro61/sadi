@@ -235,7 +235,7 @@ tokio = { version = "1.35", features = ["full"] }
 ```
 
 ```rust
-use sadi::AsyncContainer;
+use sadi::Container;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -260,9 +260,10 @@ struct UserRepository {
 
 #[tokio::main]
 async fn main() {
-    let mut container = AsyncContainer::new();
+    // Create a single Arc-wrapped container
+    let container = Arc::new(Container::new());
 
-    // Register async singleton
+    // Register async singleton using the same Container API
     container
         .bind_async_concrete_singleton::<DatabaseConnection, DatabaseConnection, _, _>(
             |_| async { DatabaseConnection::connect("postgresql://localhost:5432/myapp").await }
@@ -272,22 +273,14 @@ async fn main() {
 
     // Register with dependency
     container
-        .bind_async_concrete::<UserRepository, UserRepository, _, _>(|c| {
-            let c = c.clone();
-            async move {
-                let db = c
-                    .clone()
-                    .resolve_async::<DatabaseConnection>()
-                    .await
-                    .unwrap();
-                UserRepository { db }
-            }
+        .bind_async_concrete::<UserRepository, UserRepository, _, _>(|c| async move {
+            let db = c.resolve_async::<DatabaseConnection>().await.unwrap();
+            UserRepository { db }
         })
         .await
         .unwrap();
 
     // Resolve asynchronously
-    let container = Arc::new(container);
     let repo = container.clone().resolve_async::<UserRepository>().await.unwrap();
     
     println!("Connected to: {}", repo.db.connection_string);
@@ -296,11 +289,12 @@ async fn main() {
 
 #### Key Async Features
 
-- **Async Factories**: Define async factory functions using `bind_async_concrete` and similar methods
-- **Non-blocking Resolution**: Use `resolve_async` for non-blocking service resolution
+- **Unified API**: The same `Container` type gains async methods (`bind_async_*`, `resolve_async`) when the `async` feature is enabled
+- **Async Factories**: Define async factory functions that can perform I/O, network calls, or other async operations
+- **Non-blocking Resolution**: Use `resolve_async` for non-blocking service resolution with proper async/await support
 - **Async Singleton Caching**: Singletons are properly cached and reused in async contexts using `tokio::sync::Mutex`
 - **Circular Dependency Detection**: Async context maintains proper circular dependency detection with `AsyncResolveGuard`
-- **Container Cloning**: `AsyncContainer` implements `Clone` and uses `Arc` internally for safe sharing across async tasks
+- **Arc-based Sharing**: Wrap the `Container` in `Arc` for safe sharing across async tasks and `resolve_async` calls
 
 ## 🧪 Testing
 
@@ -335,10 +329,8 @@ cargo run -p async_example
 sadi/
 ├── sadi/                      # library crate with main DI container
 │   ├── src/
-│   │   ├── container.rs       # Sync container implementation
-│   │   ├── async_container.rs # Async container (requires "async" feature)
-│   │   ├── factory.rs         # Factory wrapper for sync services
-│   │   ├── async_factory.rs   # Async factory wrapper (requires "async" feature)
+│   │   ├── container.rs       # Container (sync + async APIs behind feature)
+│   │   ├── factory.rs         # Factory wrapper (sync + async behind feature)
 │   │   ├── resolve_guard.rs   # Circular dependency detection (sync)
 │   │   ├── async_resolve_guard.rs # Circular dependency detection (async)
 │   │   ├── error.rs           # Error types
@@ -362,7 +354,7 @@ SaDi exposes a small set of feature flags. See `sadi/Cargo.toml` for the authori
 
 - `thread-safe` (enabled by default) — switches internal shared pointer and synchronization primitives to `Arc` + `RwLock`/`Mutex` for thread-safe containers.
 - `tracing` (enabled by default) — integrates with the `tracing` crate to emit logs during registration/resolution.
-- `async` (disabled by default) — enables async-aware dependency injection with `AsyncContainer`, async factories, and non-blocking service resolution. Requires `tokio`.
+- `async` (disabled by default) — enables async-aware dependency injection on the same `Container` type (adds `bind_async_*`/`resolve_async`), with async factories and non-blocking service resolution. Requires `tokio`.
 
 The workspace default enables both `thread-safe` and `tracing`. To opt out of thread-safe behavior (use `Rc` instead of `Arc`), disable the `thread-safe` feature. To enable async support, enable the `async` feature.
 

@@ -334,6 +334,164 @@ impl Container {
         let id = TypeId::of::<T>();
         self.factories.read().unwrap().contains_key(&id)
     }
+
+    //
+    // ──────────────────────────────────────────────────────────────────────────
+    //   ASYNC METHODS (feature = "async")
+    // ──────────────────────────────────────────────────────────────────────────
+    //
+
+    /// Registers an **async abstract binding** for trait objects or unsized types.
+    ///
+    /// Instances are **not cached** (transient).
+    ///
+    /// Only available when the `async` feature is enabled.
+    #[cfg(feature = "async")]
+    pub async fn bind_async_abstract<T, R, F, Fut>(
+        &self,
+        provider: F,
+    ) -> Result<(), Error>
+    where
+        T: ?Sized + 'static + Send + Sync,
+        R: IntoShared<T> + 'static,
+        F: Fn(std::sync::Arc<Container>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = R> + Send + 'static,
+    {
+        self.bind_async_internal(provider, false).await
+    }
+
+    /// Registers a **singleton async abstract binding**.
+    ///
+    /// Only available when the `async` feature is enabled.
+    #[cfg(feature = "async")]
+    pub async fn bind_async_abstract_singleton<T, R, F, Fut>(
+        &self,
+        provider: F,
+    ) -> Result<(), Error>
+    where
+        T: ?Sized + 'static + Send + Sync,
+        R: IntoShared<T> + 'static,
+        F: Fn(std::sync::Arc<Container>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = R> + Send + 'static,
+    {
+        self.bind_async_internal(provider, true).await
+    }
+
+    /// Registers an async concrete implementation automatically wrapped in `Arc`.
+    ///
+    /// Only available when the `async` feature is enabled.
+    #[cfg(feature = "async")]
+    pub async fn bind_async_concrete<T, U, F, Fut>(
+        &self,
+        provider: F,
+    ) -> Result<(), Error>
+    where
+        T: 'static + Send + Sync,
+        U: 'static,
+        F: Fn(std::sync::Arc<Container>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = U> + Send + 'static,
+        std::sync::Arc<U>: Into<std::sync::Arc<T>>,
+    {
+        self.bind_async_abstract::<T, _, _, _>(move |c| {
+            let fut = provider(c);
+            async move { std::sync::Arc::new(fut.await).into() }
+        })
+        .await
+    }
+
+    /// Singleton version of async concrete binding.
+    ///
+    /// Only available when the `async` feature is enabled.
+    #[cfg(feature = "async")]
+    pub async fn bind_async_concrete_singleton<T, U, F, Fut>(
+        &self,
+        provider: F,
+    ) -> Result<(), Error>
+    where
+        T: 'static + Send + Sync,
+        U: 'static,
+        F: Fn(std::sync::Arc<Container>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = U> + Send + 'static,
+        std::sync::Arc<U>: Into<std::sync::Arc<T>>,
+    {
+        self.bind_async_abstract_singleton::<T, _, _, _>(move |c| {
+            let fut = provider(c);
+            async move { std::sync::Arc::new(fut.await).into() }
+        })
+        .await
+    }
+
+    /// Internal async binding logic.
+    ///
+    /// Only available when the `async` feature is enabled.
+    #[cfg(feature = "async")]
+    async fn bind_async_internal<T, R, F, Fut>(
+        &self,
+        provider: F,
+        singleton: bool,
+    ) -> Result<(), Error>
+    where
+        T: ?Sized + Send + Sync + 'static,
+        R: IntoShared<T> + 'static,
+        F: Fn(std::sync::Arc<Container>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = R> + Send + 'static,
+    {
+        use crate::factory::AsyncProvider;
+
+        let id = TypeId::of::<T>();
+        let name = std::any::type_name::<T>();
+
+        let mut map = self.factories.write().unwrap();
+
+        if map.contains_key(&id) {
+            return Err(Error::factory_already_registered(name, "factory"));
+        }
+
+        let async_provider: AsyncProvider<T> = std::sync::Arc::new(move |c| {
+            let fut = provider(c);
+            Box::pin(async move { fut.await.into_shared() })
+        });
+
+        let factory = Factory::new_async(async_provider, singleton);
+
+        map.insert(id, Box::new(factory));
+
+        Ok(())
+    }
+
+    /// Resolves a previously registered async binding.
+    ///
+    /// Only available when the `async` feature is enabled.
+    #[cfg(feature = "async")]
+    pub async fn resolve_async<T>(self: std::sync::Arc<Self>) -> Result<Shared<T>, Error>
+    where
+        T: ?Sized + Send + Sync + 'static,
+    {
+        let id = TypeId::of::<T>();
+        let name = std::any::type_name::<T>();
+
+        let _guard = crate::async_resolve_guard::AsyncResolveGuard::push(name).await?;
+
+        // Clone the factory pointer to avoid holding the read lock across await
+        let factory_ptr: *const Factory<T> = {
+            let map = self.factories.read().unwrap();
+            let boxed = map
+                .get(&id)
+                .ok_or_else(|| Error::service_not_registered(name, "factory"))?;
+
+            let factory_ref = boxed
+                .downcast_ref::<Factory<T>>()
+                .ok_or_else(|| Error::type_mismatch(name))?;
+
+            factory_ref as *const Factory<T>
+        }; // Lock is dropped here
+
+        // SAFETY: The factory lives as long as it's in the container's map,
+        // and we hold an Arc to the container, so the factory won't be dropped.
+        let factory = unsafe { &*factory_ptr };
+
+        Ok(factory.provide_async(self.clone()).await)
+    }
 }
 
 //
@@ -509,5 +667,82 @@ mod tests {
         let _g2 = crate::ResolveGuard::push("B").unwrap();
         let err = crate::ResolveGuard::push("A").unwrap_err();
         assert_eq!(err.kind, crate::ErrorKind::CircularDependency);
+    }
+
+    #[cfg(feature = "async")]
+    mod async_tests {
+        use super::*;
+
+        #[tokio::test]
+        async fn bind_and_resolve_async_concrete() {
+            #[derive(Clone)]
+            struct AsyncServiceA {
+                value: i32,
+            }
+
+            let c = Arc::new(Container::new());
+            c.bind_async_concrete::<AsyncServiceA, AsyncServiceA, _, _>(|_| async {
+                AsyncServiceA { value: 42 }
+            })
+            .await
+            .unwrap();
+
+            let s = c.clone().resolve_async::<AsyncServiceA>().await.unwrap();
+            assert_eq!(s.value, 42);
+        }
+
+        #[tokio::test]
+        async fn bind_and_resolve_async_singleton() {
+            #[derive(Clone)]
+            struct AsyncServiceB {
+                value: i32,
+            }
+
+            let c = Arc::new(Container::new());
+            c.bind_async_concrete_singleton::<AsyncServiceB, AsyncServiceB, _, _>(|_| async {
+                AsyncServiceB { value: 99 }
+            })
+            .await
+            .unwrap();
+
+            let a = c.clone().resolve_async::<AsyncServiceB>().await.unwrap();
+            let b = c.clone().resolve_async::<AsyncServiceB>().await.unwrap();
+
+            // Verify singleton behavior
+            assert!(Arc::ptr_eq(&a, &b));
+        }
+
+        #[tokio::test]
+        async fn async_dependency_chain() {
+            #[derive(Clone)]
+            struct Database {
+                connection: String,
+            }
+
+            #[derive(Clone)]
+            struct Repository {
+                db: Arc<Database>,
+            }
+
+            let c = Arc::new(Container::new());
+
+            c.bind_async_concrete_singleton::<Database, Database, _, _>(|_| async {
+                Database {
+                    connection: "postgres://localhost".to_string(),
+                }
+            })
+            .await
+            .unwrap();
+
+            c.bind_async_concrete::<Repository, Repository, _, _>(|c| async move {
+                let db = c.resolve_async::<Database>().await.unwrap();
+                Repository { db }
+            })
+            .await
+            .unwrap();
+
+            let repo = c.clone().resolve_async::<Repository>().await.unwrap();
+            assert_eq!(repo.db.connection, "postgres://localhost");
+        }
     }
 }

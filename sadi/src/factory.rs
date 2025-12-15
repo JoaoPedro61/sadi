@@ -34,6 +34,24 @@
 
 use crate::{Container, InstanceCell, Provider, Shared};
 
+#[cfg(feature = "async")]
+use std::sync::Arc;
+#[cfg(feature = "async")]
+use std::future::Future;
+#[cfg(feature = "async")]
+use std::pin::Pin;
+
+/// Async provider function type.
+///
+/// When the `async` feature is enabled, this type represents an async factory function
+/// that produces a `Shared<T>` from an `Arc<Container>`.
+#[cfg(feature = "async")]
+pub type AsyncProvider<T> = Arc<
+    dyn Fn(Arc<Container>) -> Pin<Box<dyn Future<Output = Shared<T>> + Send + 'static>>
+        + Send
+        + Sync,
+>;
+
 /// Wraps a provider closure and manages singleton or transient lifetimes.
 ///
 /// - If `singleton` is true, the first call to `provide` caches the instance and all
@@ -45,6 +63,10 @@ pub struct Factory<T: ?Sized + 'static> {
     provider: Provider<T>,
     singleton: bool,
     instance: InstanceCell<T>,
+    #[cfg(feature = "async")]
+    async_provider: Option<AsyncProvider<T>>,
+    #[cfg(feature = "async")]
+    async_instance: Option<Arc<tokio::sync::Mutex<Option<Shared<T>>>>>,
 }
 
 impl<T: ?Sized + 'static> Factory<T> {
@@ -65,6 +87,38 @@ impl<T: ?Sized + 'static> Factory<T> {
                 {
                     std::cell::RefCell::new(None)
                 }
+            },
+            #[cfg(feature = "async")]
+            async_provider: None,
+            #[cfg(feature = "async")]
+            async_instance: None,
+        }
+    }
+
+    /// Create a new async factory (only available with the `async` feature).
+    ///
+    /// - `provider`: async closure that produces a `Shared<T>`
+    /// - `singleton`: if true, cache and reuse the instance
+    #[cfg(feature = "async")]
+    pub fn new_async(provider: AsyncProvider<T>, singleton: bool) -> Self {
+        Self {
+            provider: Box::new(|_| unreachable!("sync provider should not be called for async factory")),
+            singleton,
+            instance: {
+                #[cfg(feature = "thread-safe")]
+                {
+                    std::sync::Mutex::new(None)
+                }
+                #[cfg(not(feature = "thread-safe"))]
+                {
+                    std::cell::RefCell::new(None)
+                }
+            },
+            async_provider: Some(provider),
+            async_instance: if singleton {
+                Some(Arc::new(tokio::sync::Mutex::new(None)))
+            } else {
+                None
             },
         }
     }
@@ -100,6 +154,35 @@ impl<T: ?Sized + 'static> Factory<T> {
             }
         } else {
             (self.provider)(container)
+        }
+    }
+
+    /// Provide an instance asynchronously (only available with the `async` feature).
+    ///
+    /// - If singleton, returns the cached instance or creates and caches it.
+    /// - If transient, always calls the async provider.
+    #[cfg(feature = "async")]
+    pub async fn provide_async(&self, container: Arc<Container>) -> Shared<T> {
+        let provider = self
+            .async_provider
+            .as_ref()
+            .expect("provide_async called on non-async factory");
+
+        if self.singleton {
+            let cache = self
+                .async_instance
+                .as_ref()
+                .expect("async singleton must have async_instance");
+            
+            let mut guard = cache.lock().await;
+            if let Some(inst) = guard.as_ref() {
+                return inst.clone();
+            }
+            let inst = provider(container).await;
+            *guard = Some(inst.clone());
+            inst
+        } else {
+            provider(container).await
         }
     }
 }

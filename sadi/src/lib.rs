@@ -9,10 +9,6 @@ mod shared;
 mod types;
 
 #[cfg(feature = "async")]
-mod async_factory;
-#[cfg(feature = "async")]
-mod async_container;
-#[cfg(feature = "async")]
 mod async_resolve_guard;
 
 pub use container::*;
@@ -22,9 +18,5 @@ pub use resolve_guard::*;
 pub use shared::*;
 pub use types::*;
 
-#[cfg(feature = "async")]
-pub use async_factory::*;
-#[cfg(feature = "async")]
-pub use async_container::*;
 #[cfg(feature = "async")]
 pub use async_resolve_guard::*;

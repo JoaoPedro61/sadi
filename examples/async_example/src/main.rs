@@ -1,9 +1,8 @@
 //! Async dependency injection example for SaDi
 //!
-//! This example demonstrates how to use SaDi's async support to manage
-//! asynchronous service dependencies.
+//! This example demonstrates how to use SaDi's async support with the unified Container API.
 
-use sadi::{AsyncContainer, Shared};
+use sadi::Container;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -27,7 +26,7 @@ impl DatabaseConnection {
 
 #[derive(Clone)]
 struct UserRepository {
-    db: Shared<DatabaseConnection>,
+    db: Arc<DatabaseConnection>,
 }
 
 impl UserRepository {
@@ -39,7 +38,8 @@ impl UserRepository {
 
 #[tokio::main]
 async fn main() {
-    let mut container = AsyncContainer::new();
+    // Create a single Arc-wrapped container
+    let container = Arc::new(Container::new());
 
     // Register DatabaseConnection as a singleton async factory
     container
@@ -51,23 +51,15 @@ async fn main() {
 
     // Register UserRepository with DatabaseConnection dependency
     container
-        .bind_async_concrete::<UserRepository, UserRepository, _, _>(|c| {
-            // Clone the container to access it in the async block
-            let c = c.clone();
-            async move {
-                let db = c
-                    .clone()
-                    .resolve_async::<DatabaseConnection>()
-                    .await
-                    .expect("Failed to resolve DatabaseConnection");
-                UserRepository { db }
-            }
+        .bind_async_concrete::<UserRepository, UserRepository, _, _>(|c| async move {
+            let db = c
+                .resolve_async::<DatabaseConnection>()
+                .await
+                .expect("Failed to resolve DatabaseConnection");
+            UserRepository { db }
         })
         .await
         .expect("Failed to bind UserRepository");
-
-    // Convert to Arc for async resolution
-    let container = Arc::new(container);
 
     // Resolve and use services
     let user_repo = container
