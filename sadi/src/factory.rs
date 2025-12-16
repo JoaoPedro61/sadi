@@ -57,11 +57,11 @@ impl<T: ?Sized + 'static> Factory<T> {
             provider,
             singleton,
             instance: {
-                #[cfg(feature = "thread-safe")]
+                #[cfg(any(feature = "thread-safe", feature = "async"))]
                 {
                     std::sync::Mutex::new(None)
                 }
-                #[cfg(not(feature = "thread-safe"))]
+                #[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
                 {
                     std::cell::RefCell::new(None)
                 }
@@ -69,10 +69,11 @@ impl<T: ?Sized + 'static> Factory<T> {
         }
     }
 
-    /// Provide an instance of the service.
+    /// Provide an instance from the factory.
     ///
     /// - If singleton, returns the cached instance or creates and caches it.
-    /// - If transient, always calls the provider.
+    /// - If transient, creates a new instance each time.
+    #[cfg(not(feature = "async"))]
     pub fn provide(&self, container: &Container) -> Shared<T> {
         if self.singleton {
             // thread-safe branch
@@ -102,11 +103,41 @@ impl<T: ?Sized + 'static> Factory<T> {
             (self.provider)(container)
         }
     }
+
+    #[cfg(feature = "async")]
+    pub async fn provide(&self, container: &Container) -> Shared<T> {
+        if self.singleton {
+            // thread-safe branch
+            #[cfg(feature = "thread-safe")]
+            {
+                let mut guard = self.instance.lock().unwrap();
+                if let Some(inst) = guard.as_ref() {
+                    return inst.clone();
+                }
+                let inst = (self.provider)(container).await;
+                *guard = Some(inst.clone());
+                inst
+            }
+
+            // non-thread-safe branch
+            #[cfg(not(feature = "thread-safe"))]
+            {
+                let mut borrow = self.instance.borrow_mut();
+                if let Some(inst) = borrow.as_ref() {
+                    return inst.clone();
+                }
+                let inst = (self.provider)(container).await;
+                *borrow = Some(inst.clone());
+                inst
+            }
+        } else {
+            (self.provider)(container).await
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     struct Counter;
     impl Counter {}
