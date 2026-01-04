@@ -9,12 +9,23 @@
 //! These types are used internally by the DI container to manage service
 //! registration and resolution.
 use crate::Shared;
+#[cfg(all(feature = "async"))]
+use std::pin::Pin;
 use std::{any::TypeId, collections::HashMap};
 
-#[cfg(feature = "async")]
-use futures::future::BoxFuture;
-
 use crate::Container;
+
+
+#[cfg(all(feature = "thread-safe", not(feature = "async")))]
+pub type InnerProvider<T> = dyn Fn(&Container) -> Shared<T> + Send + Sync + 'static;
+#[cfg(all(feature = "async"))]
+pub type InnerProvider<T> = dyn for<'a> Fn(&'a Container)
+            -> Pin<Box<dyn Future<Output = Shared<T>> + Send + 'a>>
+        + Send
+        + Sync
+        + 'static;
+#[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
+pub type InnerProvider<T> = dyn Fn(&Container) -> Shared<T> + 'static;
 
 /// Type alias for a service provider (factory function).
 ///
@@ -44,12 +55,7 @@ use crate::Container;
 ///     Box::pin(async move { Shared::new(42) })
 /// });
 /// ```
-#[cfg(all(feature = "thread-safe", not(feature = "async")))]
-pub type Provider<T> = Box<dyn Fn(&Container) -> Shared<T> + Send + Sync + 'static>;
-#[cfg(all(feature = "async"))]
-pub type Provider<T> = Box<dyn Fn(&Container) -> BoxFuture<'static, Shared<T>> + Send + Sync + 'static>;
-#[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
-pub type Provider<T> = Box<dyn Fn(&Container) -> Shared<T> + 'static>;
+pub type Provider<T> = Box<InnerProvider<T>>;
 
 /// Type alias for a cell holding a singleton/shared instance.
 ///

@@ -136,20 +136,52 @@ impl<T: ?Sized + 'static> Factory<T> {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
 
     struct Counter;
     impl Counter {}
 
-    #[test]
-    fn singleton_factory_gives_same_instance() {
-        let provider = Box::new(|_c: &Container| Shared::new(Counter));
-        let f = Factory::new(provider, true);
-        let c = Container::new();
-        let a = f.provide(&c);
-        let b = f.provide(&c);
-        // Ensure these are the same instance (pointer equality)
-        assert!(Shared::ptr_eq(&a, &b));
+    #[cfg(not(feature = "async"))]
+    #[cfg(test)]
+    mod sync_tests {
+        use super::super::*;
+        use super::*;
+
+        #[test]
+        fn singleton_factory_gives_same_instance() {
+            let provider = Box::new(|_c: &Container| Shared::new(Counter));
+            let f = Factory::new(provider, true);
+            let c = Container::new();
+            let a = f.provide(&c);
+            let b = f.provide(&c);
+            // Ensure these are the same instance (pointer equality)
+            assert!(Shared::ptr_eq(&a, &b));
+        }
+    }
+
+    #[cfg(feature = "async")]
+    #[cfg(test)]
+    mod async_tests {
+        use super::super::*;
+        use super::*;
+        use futures::executor::block_on;
+
+        #[test]
+        fn singleton_factory_gives_same_instance() {
+            let provider: Provider<Counter> = Box::new(|_container| {
+                Box::pin(async move {
+                    // async logic here
+                    Shared::new(Counter)
+                })
+            });
+            let f = Factory::new(provider, true);
+            let c = Container::new();
+            let a = block_on(f.provide(&c));
+            let b = block_on(f.provide(&c));
+            // Ensure these are the same instance (pointer equality)
+            assert!(Shared::ptr_eq(&a, &b));
+        }
     }
 }

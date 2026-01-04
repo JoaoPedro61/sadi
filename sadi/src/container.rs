@@ -201,11 +201,11 @@ impl Default for Container {
 
 //
 // ──────────────────────────────────────────────────────────────────────────────
-//   THREAD SAFE IMPLEMENTATION (feature = "thread-safe")
+//   THREAD SAFE IMPLEMENTATION (feature = "thread-safe") AND NOT ASYNC
 // ──────────────────────────────────────────────────────────────────────────────
 //
 
-#[cfg(feature = "thread-safe")]
+#[cfg(all(feature = "thread-safe", not(feature = "async")))]
 impl Container {
     /// Creates a new thread-safe container backed by `RwLock<HashMap>`.
     ///
@@ -338,11 +338,11 @@ impl Container {
 
 //
 // ──────────────────────────────────────────────────────────────────────────────
-//   NON THREAD SAFE IMPLEMENTATION (default)
+//   NON THREAD SAFE IMPLEMENTATION (default) AND NOT ASYNC
 // ──────────────────────────────────────────────────────────────────────────────
 //
 
-#[cfg(not(feature = "thread-safe"))]
+#[cfg(all(not(feature = "thread-safe"), not(feature = "async")))]
 impl Container {
     /// Creates a new non-thread-safe container backed by `RefCell<HashMap>`.
     ///
