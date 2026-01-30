@@ -25,7 +25,7 @@ use tracing::debug;
 /// let transient_scope = Scope::Transient;
 /// assert!(!transient_scope.is_singleton());
 /// ```
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub enum Scope {
     Root,

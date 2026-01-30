@@ -190,6 +190,57 @@ impl Provider {
             }),
         }
     }
+
+    /// Creates a root provider with application-level scope.
+    ///
+    /// A root provider creates a single instance at the application level that is reused
+    /// across the entire application. The instance is created once when first requested
+    /// and then cached at the root level.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `T`: The type of the service being provided. Must implement `Any + Send + Sync + 'static`.
+    /// - `F`: The factory function type. Must be `Send + Sync + 'static`.
+    ///
+    /// # Parameters
+    ///
+    /// - `factory`: A closure that takes an injector and returns an instance of type `T`
+    ///
+    /// # Returns
+    ///
+    /// A new `Provider` configured with root-level scope.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sadi::provider::Provider;
+    ///
+    /// let provider = Provider::root(|_injector| {
+    ///     42u32
+    /// });
+    ///
+    /// let provider = Provider::root(|_injector| {
+    ///     "root service".to_string()
+    /// });
+    /// ```
+    pub fn root<T, F>(factory: F) -> Self
+    where
+        T: Any + Send + Sync + 'static,
+        F: Fn(&Injector) -> T + Send + Sync + 'static,
+    {
+        #[cfg(feature = "tracing")]
+        info!("Creating root provider with Root scope (thread-safe)");
+
+        Self {
+            scope: Scope::Root,
+            factory: Box::new(move |injector| {
+                #[cfg(feature = "tracing")]
+                debug!("Executing root factory for type instantiation");
+
+                Shared::new(factory(injector)) as Shared<dyn Any + Send + Sync>
+            }),
+        }
+    }
 }
 
 #[cfg(not(feature = "thread-safe"))]
@@ -294,6 +345,59 @@ impl Provider {
             factory: Box::new(move |injector| {
                 #[cfg(feature = "tracing")]
                 debug!("Executing transient factory - creating new instance");
+
+                Shared::new(factory(injector)) as Shared<dyn Any>
+            }),
+        }
+    }
+
+    /// Creates a root provider with application-level scope.
+    ///
+    /// A root provider creates a single instance at the application level that is reused
+    /// across the entire application. The instance is created once when first requested
+    /// and then cached at the root level.
+    ///
+    /// This is the single-threaded variant without `Send + Sync` requirements.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `T`: The type of the service being provided. Must implement `Any + 'static`.
+    /// - `F`: The factory function type. Must be `'static`.
+    ///
+    /// # Parameters
+    ///
+    /// - `factory`: A closure that takes an injector and returns an instance of type `T`
+    ///
+    /// # Returns
+    ///
+    /// A new `Provider` configured with root-level scope.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sadi::provider::Provider;
+    ///
+    /// let provider = Provider::root(|_injector| {
+    ///     42u32
+    /// });
+    ///
+    /// let provider = Provider::root(|_injector| {
+    ///     "root service".to_string()
+    /// });
+    /// ```
+    pub fn root<T, F>(factory: F) -> Self
+    where
+        T: Any + 'static,
+        F: Fn(&Injector) -> T + 'static,
+    {
+        #[cfg(feature = "tracing")]
+        info!("Creating root provider with Root scope (single-threaded)");
+
+        Self {
+            scope: Scope::Root,
+            factory: Box::new(move |injector| {
+                #[cfg(feature = "tracing")]
+                debug!("Executing root factory for type instantiation");
 
                 Shared::new(factory(injector)) as Shared<dyn Any>
             }),
@@ -422,6 +526,40 @@ mod tests {
 
         assert_eq!(service.id, 123);
         assert_eq!(service.name, "test");
+    }
+
+    #[test]
+    fn test_root_creates_root_scope() {
+        let provider = Provider::root(|_| 42u32);
+        assert!(matches!(provider.scope, Scope::Root), "Root should have Root scope");
+    }
+
+    #[test]
+    fn test_root_factory_returns_valid_value() {
+        let provider = Provider::root(|_| 100u32);
+        let injector = Injector::root();
+        let value = (provider.factory)(&injector);
+
+        let value = value.downcast_ref::<u32>().unwrap();
+        assert_eq!(*value, 100, "Root factory should return the correct value");
+    }
+
+    #[test]
+    fn test_root_factory_with_different_types() {
+        let int_provider = Provider::root(|_| 42u32);
+        let string_provider = Provider::root(|_| String::from("test"));
+        let vec_provider = Provider::root(|_| vec![1, 2, 3]);
+
+        let injector = Injector::root();
+
+        let int_val = (int_provider.factory)(&injector);
+        assert_eq!(*int_val.downcast_ref::<u32>().unwrap(), 42);
+
+        let string_val = (string_provider.factory)(&injector);
+        assert_eq!(*string_val.downcast_ref::<String>().unwrap(), "test");
+
+        let vec_val = (vec_provider.factory)(&injector);
+        assert_eq!(*vec_val.downcast_ref::<Vec<i32>>().unwrap(), vec![1, 2, 3]);
     }
 }
 

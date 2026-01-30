@@ -3,8 +3,8 @@ use std::{
     collections::HashMap,
 };
 
-use crate::provider::Provider;
 use crate::runtime::{Shared, Store};
+use crate::{Scope, provider::Provider};
 
 pub struct Injector {
     inner: Shared<InjectorInner>,
@@ -92,42 +92,86 @@ impl Injector {
         let type_id = TypeId::of::<T>();
 
         if let Some(instance) = self.get_instance(type_id) {
-            return instance.downcast::<T>().expect("Type mismatch in injector");
+            return instance.downcast::<T>().expect("Type mismatch");
         }
 
         let provider = self.get_provider(type_id).expect("No provider found");
 
-        let instance = (provider.factory)(&self);
+        if provider.scope == Scope::Transient {
+            let instance = (provider.factory)(self);
+            return instance.downcast::<T>().expect("Type mismatch");
+        }
 
-        self.store_instance(type_id, instance.clone());
+        let instance = (provider.factory)(self);
 
-        instance
-            .downcast::<T>()
-            .expect("Type mismatch in provider result")
+        match provider.scope {
+            Scope::Root => {
+                let root = self.root_injector();
+                root.store_instance(type_id, instance.clone());
+            }
+
+            Scope::Module => {
+                self.store_instance(type_id, instance.clone());
+            }
+
+            Scope::Transient => unreachable!(),
+        }
+
+        instance.downcast::<T>().expect("Type mismatch")
     }
 
     fn get_provider(&self, type_id: TypeId) -> Option<Shared<Provider>> {
-        #[cfg(feature = "thread-safe")]
-        {
-            self.inner.providers.read().unwrap().get(&type_id).cloned()
+        let local = {
+            #[cfg(feature = "thread-safe")]
+            {
+                self.inner.providers.read().unwrap().get(&type_id).cloned()
+            }
+
+            #[cfg(not(feature = "thread-safe"))]
+            {
+                self.inner.providers.borrow().get(&type_id).cloned()
+            }
+        };
+
+        if local.is_some() {
+            return local;
         }
 
-        #[cfg(not(feature = "thread-safe"))]
-        {
-            self.inner.providers.borrow().get(&type_id).cloned()
+        if let Some(parent) = &self.inner.parent {
+            let parent_injector = Injector {
+                inner: parent.clone(),
+            };
+            return parent_injector.get_provider(type_id);
         }
+
+        None
     }
 
     fn get_instance(&self, type_id: TypeId) -> Option<Shared<dyn Any>> {
-        #[cfg(feature = "thread-safe")]
-        {
-            self.inner.instances.read().unwrap().get(&type_id).cloned()
+        let local = {
+            #[cfg(feature = "thread-safe")]
+            {
+                self.inner.instances.read().unwrap().get(&type_id).cloned()
+            }
+
+            #[cfg(not(feature = "thread-safe"))]
+            {
+                self.inner.instances.borrow().get(&type_id).cloned()
+            }
+        };
+
+        if local.is_some() {
+            return local;
         }
 
-        #[cfg(not(feature = "thread-safe"))]
-        {
-            self.inner.instances.borrow().get(&type_id).cloned()
+        if let Some(parent) = &self.inner.parent {
+            let parent_injector = Injector {
+                inner: parent.clone(),
+            };
+            return parent_injector.get_instance(type_id);
         }
+
+        None
     }
 
     fn store_instance(&self, type_id: TypeId, instance: Shared<dyn Any>) {
@@ -144,5 +188,17 @@ impl Injector {
         {
             self.inner.instances.borrow_mut().insert(type_id, instance);
         }
+    }
+
+    fn root_injector(&self) -> Injector {
+        let mut current = self.clone();
+
+        while let Some(parent) = &current.inner.parent {
+            current = Injector {
+                inner: parent.clone(),
+            };
+        }
+
+        current
     }
 }
