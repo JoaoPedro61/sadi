@@ -1,3 +1,4 @@
+use sadi::ThreadSafe;
 use sadi::injector::Injector;
 use sadi::provider::Provider;
 
@@ -11,6 +12,8 @@ struct Config {
     database_url: String,
     environment: String,
 }
+
+impl ThreadSafe for Config {}
 
 impl Config {
     fn new() -> Self {
@@ -26,6 +29,8 @@ impl Config {
 struct Logger {
     prefix: String,
 }
+
+impl ThreadSafe for Logger {}
 
 impl Logger {
     fn new(config: &Config) -> Self {
@@ -45,6 +50,8 @@ struct Database {
     url: String,
     id: usize,
 }
+
+impl ThreadSafe for Database {}
 
 impl Database {
     fn new(config: &Config) -> Self {
@@ -66,6 +73,8 @@ impl Database {
 #[derive(Debug)]
 struct UserService;
 
+impl ThreadSafe for UserService {}
+
 impl UserService {
     fn get_user(&self, db: &Database) -> String {
         db.query("SELECT * FROM users WHERE id = 1")
@@ -77,6 +86,8 @@ impl UserService {
 struct RequestHandler {
     id: u64,
 }
+
+impl ThreadSafe for RequestHandler {}
 
 impl RequestHandler {
     fn new() -> Self {
@@ -97,6 +108,8 @@ impl RequestHandler {
 struct Cache {
     name: String,
 }
+
+impl ThreadSafe for Cache {}
 
 impl Cache {
     fn new() -> Self {

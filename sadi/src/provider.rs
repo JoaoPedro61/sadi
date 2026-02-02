@@ -169,7 +169,7 @@ impl Provider {
     /// });
     ///
     /// let provider = Provider::transient(|_injector| {
-    ///     std::collections::HashMap::new()
+    ///     std::collections::HashMap::<String, i32>::new()
     /// });
     /// ```
     pub fn transient<T, F>(factory: F) -> Self
