@@ -80,11 +80,36 @@ use tracing::{debug, info};
 pub struct Provider {
     pub scope: Scope,
 
+    #[allow(clippy::type_complexity)]
     #[cfg(not(feature = "thread-safe"))]
     pub factory: Box<dyn Fn(&Injector) -> Shared<dyn Any> + 'static>,
+    #[allow(clippy::type_complexity)]
     #[cfg(feature = "thread-safe")]
-    pub factory:
-        Box<dyn Fn(&Injector) -> Shared<dyn Any + Send + Sync> + Send + Sync + 'static>,
+    pub factory: Box<dyn Fn(&Injector) -> Shared<dyn Any + Send + Sync> + Send + Sync + 'static>,
+}
+
+#[cfg(feature = "debug")]
+impl std::fmt::Debug for Provider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut ds = f.debug_struct("Provider");
+
+        ds.field("scope", &self.scope);
+
+        #[cfg(feature = "thread-safe")]
+        {
+            ds.field(
+                "factory",
+                &"<dyn Fn(&Injector) -> Shared<dyn Any + Send + Sync>>",
+            );
+        }
+
+        #[cfg(not(feature = "thread-safe"))]
+        {
+            ds.field("factory", &"<dyn Fn(&Injector) -> Shared<dyn Any>>");
+        }
+
+        ds.finish()
+    }
 }
 
 #[cfg(feature = "thread-safe")]
@@ -135,7 +160,7 @@ impl Provider {
                 #[cfg(feature = "tracing")]
                 debug!("Executing singleton factory for type instantiation");
 
-                Shared::new(factory(injector)) as Shared<dyn Any + Send + Sync>
+                Shared::new(factory(injector))
             }),
         }
     }
@@ -186,7 +211,7 @@ impl Provider {
                 #[cfg(feature = "tracing")]
                 debug!("Executing transient factory - creating new instance");
 
-                Shared::new(factory(injector)) as Shared<dyn Any + Send + Sync>
+                Shared::new(factory(injector))
             }),
         }
     }
@@ -237,7 +262,7 @@ impl Provider {
                 #[cfg(feature = "tracing")]
                 debug!("Executing root factory for type instantiation");
 
-                Shared::new(factory(injector)) as Shared<dyn Any + Send + Sync>
+                Shared::new(factory(injector))
             }),
         }
     }
@@ -293,7 +318,7 @@ impl Provider {
                 #[cfg(feature = "tracing")]
                 debug!("Executing singleton factory for type instantiation");
 
-                Shared::new(factory(injector)) as Shared<dyn Any>
+                Shared::new(factory(injector))
             }),
         }
     }
@@ -346,7 +371,7 @@ impl Provider {
                 #[cfg(feature = "tracing")]
                 debug!("Executing transient factory - creating new instance");
 
-                Shared::new(factory(injector)) as Shared<dyn Any>
+                Shared::new(factory(injector))
             }),
         }
     }
@@ -399,7 +424,7 @@ impl Provider {
                 #[cfg(feature = "tracing")]
                 debug!("Executing root factory for type instantiation");
 
-                Shared::new(factory(injector)) as Shared<dyn Any>
+                Shared::new(factory(injector))
             }),
         }
     }
@@ -412,7 +437,10 @@ mod tests {
     #[test]
     fn test_singleton_creates_module_scope() {
         let provider = Provider::singleton(|_| 42u32);
-        assert!(matches!(provider.scope, Scope::Module), "Singleton should have Module scope");
+        assert!(
+            matches!(provider.scope, Scope::Module),
+            "Singleton should have Module scope"
+        );
     }
 
     #[test]
@@ -431,7 +459,10 @@ mod tests {
         let value = (provider.factory)(&injector);
 
         let value = value.downcast_ref::<u32>().unwrap();
-        assert_eq!(*value, 100, "Singleton factory should return the correct value");
+        assert_eq!(
+            *value, 100,
+            "Singleton factory should return the correct value"
+        );
     }
 
     #[test]
@@ -531,7 +562,10 @@ mod tests {
     #[test]
     fn test_root_creates_root_scope() {
         let provider = Provider::root(|_| 42u32);
-        assert!(matches!(provider.scope, Scope::Root), "Root should have Root scope");
+        assert!(
+            matches!(provider.scope, Scope::Root),
+            "Root should have Root scope"
+        );
     }
 
     #[test]
@@ -562,4 +596,3 @@ mod tests {
         assert_eq!(*vec_val.downcast_ref::<Vec<i32>>().unwrap(), vec![1, 2, 3]);
     }
 }
-
