@@ -116,7 +116,7 @@ impl Cache {
 fn main() {
     println!("╔════════════════════════════════════════════════════════╗");
     println!("║        SADI - Dependency Injection Container           ║");
-    println!("║                  Complex Example                        ║");
+    println!("║                  Complex Example                       ║");
     println!("╚════════════════════════════════════════════════════════╝\n");
 
     // ────────────────────────────────────────────────────────────
