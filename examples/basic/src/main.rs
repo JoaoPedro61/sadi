@@ -1,6 +1,4 @@
-use sadi::ThreadSafe;
-use sadi::injector::Injector;
-use sadi::provider::Provider;
+use sadi::{Injector, Provider, Shared};
 
 // ============================================================
 // SERVICE TYPES
@@ -12,8 +10,6 @@ struct Config {
     database_url: String,
     environment: String,
 }
-
-impl ThreadSafe for Config {}
 
 impl Config {
     fn new() -> Self {
@@ -29,8 +25,6 @@ impl Config {
 struct Logger {
     prefix: String,
 }
-
-impl ThreadSafe for Logger {}
 
 impl Logger {
     fn new(config: &Config) -> Self {
@@ -50,8 +44,6 @@ struct Database {
     url: String,
     id: usize,
 }
-
-impl ThreadSafe for Database {}
 
 impl Database {
     fn new(config: &Config) -> Self {
@@ -73,8 +65,6 @@ impl Database {
 #[derive(Debug)]
 struct UserService;
 
-impl ThreadSafe for UserService {}
-
 impl UserService {
     fn get_user(&self, db: &Database) -> String {
         db.query("SELECT * FROM users WHERE id = 1")
@@ -86,8 +76,6 @@ impl UserService {
 struct RequestHandler {
     id: u64,
 }
-
-impl ThreadSafe for RequestHandler {}
 
 impl RequestHandler {
     fn new() -> Self {
@@ -108,8 +96,6 @@ impl RequestHandler {
 struct Cache {
     name: String,
 }
-
-impl ThreadSafe for Cache {}
 
 impl Cache {
     fn new() -> Self {
@@ -134,45 +120,50 @@ fn main() {
     println!("╚════════════════════════════════════════════════════════╝\n");
 
     // ────────────────────────────────────────────────────────────
-    // Manual Setup (direct injector usage)
+    // Setup with direct Injector usage
     // ────────────────────────────────────────────────────────────
     println!("📦 Creating injector and registering services...");
-    let injector = sadi::runtime::Shared::new(Injector::root());
+    let injector = Injector::root();
 
     // Register singleton Config
     injector
-        .try_provide::<Config>(Provider::singleton(|_injector| Config::new()))
+        .try_provide::<Config>(Provider::singleton(|_injector| Shared::new(Config::new()))
+)
         .expect("failed to register Config");
 
-    // Register singleton Logger
+    // Register singleton Logger with Config dependency
     injector
-        .try_provide::<Logger>(Provider::singleton(|_injector| {
-            let config = Config::new();
-            Logger::new(&config)
+        .try_provide::<Logger>(Provider::singleton(|injector| {
+            let config = injector
+                .try_resolve::<Config>()
+                .expect("failed to resolve Config");
+            Shared::new(Logger::new(&config))
         }))
         .expect("failed to register Logger");
 
-    // Register singleton Database
+    // Register singleton Database with Config dependency
     injector
-        .try_provide::<Database>(Provider::singleton(|_injector| {
-            let config = Config::new();
-            Database::new(&config)
+        .try_provide::<Database>(Provider::singleton(|injector| {
+            let config = injector
+                .try_resolve::<Config>()
+                .expect("failed to resolve Config");
+            Shared::new(Database::new(&config))
         }))
         .expect("failed to register Database");
 
     // Register singleton UserService
     injector
-        .try_provide::<UserService>(Provider::singleton(|_injector| UserService))
+        .try_provide::<UserService>(Provider::singleton(|_injector| Shared::new(UserService)))
         .expect("failed to register UserService");
 
     // Register singleton Cache
     injector
-        .try_provide::<Cache>(Provider::singleton(|_injector| Cache::new()))
+        .try_provide::<Cache>(Provider::singleton(|_injector| Shared::new(Cache::new())))
         .expect("failed to register Cache");
 
     // Register transient RequestHandler
     injector
-        .try_provide::<RequestHandler>(Provider::transient(|_injector| RequestHandler::new()))
+        .try_provide::<RequestHandler>(Provider::transient(|_injector| Shared::new(RequestHandler::new())))
         .expect("failed to register RequestHandler");
 
     println!("✓ All services registered!\n");
@@ -191,7 +182,7 @@ fn main() {
         .expect("failed to resolve Config");
     println!("Config 1: {:?}", config1);
     println!("Config 2: {:?}", config2);
-    let same = sadi::runtime::Shared::ptr_eq(&config1, &config2);
+    let same = Shared::ptr_eq(&config1, &config2);
     println!("✓ Same instance: {}\n", same);
 
     // ────────────────────────────────────────────────────────────
@@ -208,7 +199,7 @@ fn main() {
         .expect("failed to resolve Database");
     println!("Database 1: {:?}", db1);
     println!("Database 2: {:?}", db2);
-    let same_db = sadi::runtime::Shared::ptr_eq(&db1, &db2);
+    let same_db = Shared::ptr_eq(&db1, &db2);
     println!("✓ Same instance (singleton): {}\n", same_db);
 
     // ────────────────────────────────────────────────────────────
@@ -262,7 +253,7 @@ fn main() {
     println!("Handler 2: {:?}", handler2);
     println!("Handler 1 message: {}", handler1.handle("Get user"));
     println!("Handler 2 message: {}", handler2.handle("Create post"));
-    let different = !sadi::runtime::Shared::ptr_eq(&handler1, &handler2);
+    let different = !Shared::ptr_eq(&handler1, &handler2);
     println!("✓ Different instances (transient): {}\n", different);
 
     // ────────────────────────────────────────────────────────────
@@ -304,15 +295,15 @@ fn main() {
 
     println!(
         "Config instances same: {}",
-        sadi::runtime::Shared::ptr_eq(&config1, &config3)
+        Shared::ptr_eq(&config1, &config3)
     );
     println!(
         "Database instances same: {}",
-        sadi::runtime::Shared::ptr_eq(&db1, &db3)
+        Shared::ptr_eq(&db1, &db3)
     );
     println!(
         "Cache instances same: {}",
-        sadi::runtime::Shared::ptr_eq(&cache1, &cache2)
+        Shared::ptr_eq(&cache1, &cache2)
     );
     println!();
 
@@ -340,12 +331,12 @@ fn main() {
     println!("╔════════════════════════════════════════════════════════╗");
     println!("║                    Example Complete                    ║");
     println!("║                                                        ║");
-    println!("║  Demonstrated Features:                               ║");
-    println!("║  ✓ Singleton services (same instance)                 ║");
-    println!("║  ✓ Transient services (different instances)           ║");
-    println!("║  ✓ Service dependency resolution                      ║");
-    println!("║  ✓ Multiple service types                             ║");
-    println!("║  ✓ Direct injector manipulation                       ║");
-    println!("║  ✓ Service composition patterns                       ║");
+    println!("║  Demonstrated Features:                                ║");
+    println!("║  ✓ Injector & Provider pattern                         ║");
+    println!("║  ✓ Singleton services (same instance)                  ║");
+    println!("║  ✓ Transient services (different instances)            ║");
+    println!("║  ✓ Service dependency resolution                       ║");
+    println!("║  ✓ Multiple service types                              ║");
+    println!("║  ✓ Service composition patterns                        ║");
     println!("╚════════════════════════════════════════════════════════╝");
 }
