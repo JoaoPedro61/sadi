@@ -126,6 +126,7 @@ use crate::Shared;
 /// // Both instances point to the same allocation
 /// assert!(Shared::ptr_eq(&instance1.value(), &instance2.value()));
 /// ```
+#[derive(Clone)]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub struct Instance<T: ?Sized + 'static> {
     /// The shared reference to the actual value

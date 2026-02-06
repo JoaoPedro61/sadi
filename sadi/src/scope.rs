@@ -33,7 +33,6 @@ pub enum Scope {
     Transient,
 }
 
-#[cfg(feature = "tracing")]
 impl std::fmt::Display for Scope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
