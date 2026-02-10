@@ -1,428 +1,342 @@
-use sadi::{Container, Error, Shared, container};
+use sadi::{Injector, Provider, Shared};
 
-// Example services to demonstrate dependency injection
+// ============================================================
+// SERVICE TYPES
+// ============================================================
 
-/// A configuration service (singleton) - shared across the application
-#[derive(Debug)]
-struct ConfigService {
-    app_name: String,
-    version: String,
-    debug_mode: bool,
+/// Configuration service - demonstrates singleton
+#[derive(Clone, Debug)]
+struct Config {
+    database_url: String,
+    environment: String,
 }
 
-impl ConfigService {
+impl Config {
     fn new() -> Self {
-        println!("⚙️  Initializing ConfigService (singleton)");
         Self {
-            app_name: "SaDi Example App".to_string(),
-            version: "1.0.0".to_string(),
-            debug_mode: true,
+            database_url: "postgresql://localhost/mydb".to_string(),
+            environment: "development".to_string(),
         }
     }
-
-    fn get_info(&self) -> String {
-        format!(
-            "{} v{} (debug: {})",
-            self.app_name, self.version, self.debug_mode
-        )
-    }
 }
 
-/// A database service (singleton) - expensive to create, shared across services
+/// Logger service - demonstrates singleton
 #[derive(Debug)]
-struct DatabaseService {
-    connection_string: String,
-    connected: bool,
+struct Logger {
+    prefix: String,
 }
 
-impl DatabaseService {
-    fn new(config: Shared<ConfigService>) -> Self {
-        println!("🗄️  Connecting to database...");
+impl Logger {
+    fn new(config: &Config) -> Self {
         Self {
-            connection_string: format!(
-                "postgresql://localhost:5432/{}",
-                config.app_name.to_lowercase()
-            ),
-            connected: true,
+            prefix: format!("[{}]", config.environment),
         }
     }
 
-    fn execute_query(&self, query: &str) -> String {
-        if self.connected {
-            format!("✅ Executed: '{}' on {}", query, self.connection_string)
-        } else {
-            "❌ Database not connected".to_string()
-        }
+    fn log(&self, message: &str) {
+        println!("{} {}", self.prefix, message);
     }
 }
 
-/// A logger service (transient) - new instance per injection
+/// Database connection - demonstrates singleton
 #[derive(Debug)]
-struct LoggerService {
-    db: Shared<DatabaseService>,
-    config: Shared<ConfigService>,
+struct Database {
+    url: String,
+    id: usize,
 }
 
-impl LoggerService {
-    fn new(db: Shared<DatabaseService>, config: Shared<ConfigService>) -> Self {
-        println!("📝 Creating LoggerService instance");
-        Self { db, config }
-    }
+impl Database {
+    fn new(config: &Config) -> Self {
+        static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-    fn log(&self, level: &str, message: &str) {
-        let log_entry = format!("[{}] {}", level, message);
-
-        if self.config.debug_mode {
-            println!("🔍 Debug Log: {}", log_entry);
+        Self {
+            url: config.database_url.clone(),
+            id,
         }
+    }
 
-        // Store log in database
-        let result = self.db.execute_query(&format!(
-            "INSERT INTO logs (level, message) VALUES ('{}', '{}')",
-            level, message
-        ));
-        println!("📊 {}", result);
+    fn query(&self, sql: &str) -> String {
+        format!("DB[{}]: {}", self.id, sql)
     }
 }
 
-/// A user service (transient) - business logic layer
+/// User service - demonstrates singleton with dependencies
 #[derive(Debug)]
-struct UserService {
-    db: Shared<DatabaseService>,
-    logger: Shared<LoggerService>,
-}
+struct UserService;
 
 impl UserService {
-    fn new(db: Shared<DatabaseService>, logger: Shared<LoggerService>) -> Self {
-        println!("👤 Creating UserService instance");
-        Self { db, logger }
-    }
-
-    fn create_user(&self, name: &str, email: &str) -> Result<String, String> {
-        self.logger
-            .log("INFO", &format!("Creating user: {} ({})", name, email));
-
-        // Simulate user creation
-        let query = format!(
-            "INSERT INTO users (name, email) VALUES ('{}', '{}')",
-            name, email
-        );
-        let result = self.db.execute_query(&query);
-
-        if result.contains("✅") {
-            let success_msg = format!("User '{}' created successfully", name);
-            self.logger.log("INFO", &success_msg);
-            Ok(success_msg)
-        } else {
-            let error_msg = format!("Failed to create user '{}'", name);
-            self.logger.log("ERROR", &error_msg);
-            Err(error_msg)
-        }
-    }
-
-    fn get_user(&self, id: u32) -> String {
-        self.logger
-            .log("INFO", &format!("Retrieving user with ID: {}", id));
-        self.db
-            .execute_query(&format!("SELECT * FROM users WHERE id = {}", id))
+    fn get_user(&self, db: &Database) -> String {
+        db.query("SELECT * FROM users WHERE id = 1")
     }
 }
 
-/// An email service (transient) - external service integration
+/// Request handler - demonstrates transient (new instance each request)
 #[derive(Debug)]
-struct EmailService {
-    config: Shared<ConfigService>,
-    logger: Shared<LoggerService>,
+struct RequestHandler {
+    id: u64,
 }
 
-impl EmailService {
-    fn new(config: Shared<ConfigService>, logger: Shared<LoggerService>) -> Self {
-        println!("📧 Creating EmailService instance");
-        Self { config, logger }
-    }
-
-    fn send_welcome_email(&self, user_name: &str, email: &str) -> bool {
-        self.logger
-            .log("INFO", &format!("Sending welcome email to {}", email));
-
-        if self.config.debug_mode {
-            println!("📧 [DEBUG] Would send email to: {}", email);
-            println!("📧 [DEBUG] Subject: Welcome to {}!", self.config.app_name);
-            println!(
-                "📧 [DEBUG] Body: Hello {}, welcome to our application!",
-                user_name
-            );
-        }
-
-        // Simulate email sending
-        let success = email.contains("@");
-        if success {
-            self.logger.log(
-                "INFO",
-                &format!("Welcome email sent successfully to {}", email),
-            );
-        } else {
-            self.logger.log(
-                "ERROR",
-                &format!("Failed to send email to invalid address: {}", email),
-            );
-        }
-
-        success
-    }
-}
-
-/// Application service (transient) - orchestrates other services
-#[derive(Debug)]
-struct ApplicationService {
-    user_service: Shared<UserService>,
-    email_service: Shared<EmailService>,
-    config: Shared<ConfigService>,
-}
-
-impl ApplicationService {
-    fn new(
-        user_service: Shared<UserService>,
-        email_service: Shared<EmailService>,
-        config: Shared<ConfigService>,
-    ) -> Self {
-        println!("🚀 Creating ApplicationService instance");
+impl RequestHandler {
+    fn new() -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         Self {
-            user_service,
-            email_service,
-            config,
+            id: duration.as_nanos() as u64 % 10000,
         }
     }
 
-    fn register_user(&self, name: &str, email: &str) -> Result<String, String> {
-        println!("\n--- User Registration Process ---");
-        println!("🏢 Using {} for registration", self.config.get_info());
+    fn handle(&self, message: &str) -> String {
+        format!("Request #{}: {}", self.id, message)
+    }
+}
 
-        // Create user
-        match self.user_service.create_user(name, email) {
-            Ok(result) => {
-                // Send welcome email
-                if self.email_service.send_welcome_email(name, email) {
-                    Ok(format!("{} - Welcome email sent!", result))
-                } else {
-                    Ok(format!(
-                        "{} - Warning: Failed to send welcome email",
-                        result
-                    ))
-                }
-            }
-            Err(error) => Err(error),
+/// Cache service - demonstrates singleton
+#[derive(Debug)]
+struct Cache {
+    name: String,
+}
+
+impl Cache {
+    fn new() -> Self {
+        Self {
+            name: "in-memory-cache".to_string(),
         }
     }
+
+    fn get(&self, key: &str) -> Option<String> {
+        Some(format!("Cached value for {}", key))
+    }
 }
 
-fn main() -> Result<(), Error> {
-    println!("🚀 SaDi Dependency Injection Example");
-    println!("=====================================\n");
+// ============================================================
+// MAIN
+// ============================================================
 
-    // Create and configure the DI container
-    println!("📦 Setting up dependency injection container...");
+fn main() {
+    println!("╔════════════════════════════════════════════════════════╗");
+    println!("║        SADI - Dependency Injection Container           ║");
+    println!("║                  Complex Example                       ║");
+    println!("╚════════════════════════════════════════════════════════╝\n");
 
-    let container = container! {
-        bind(singleton ConfigService => |_| ConfigService::new())
-        bind(singleton DatabaseService => |c| DatabaseService::new(c.resolve::<ConfigService>().unwrap()))
-        bind(LoggerService => |c| LoggerService::new(c.resolve::<DatabaseService>().unwrap(), c.resolve::<ConfigService>().unwrap()))
-        bind(UserService => |c| UserService::new(c.resolve::<DatabaseService>().unwrap(), c.resolve::<LoggerService>().unwrap()))
-        bind(EmailService => |c| EmailService::new(c.resolve::<ConfigService>().unwrap(), c.resolve::<LoggerService>().unwrap()))
-        bind(ApplicationService => |c| ApplicationService::new(c.resolve::<UserService>().unwrap(), c.resolve::<EmailService>().unwrap(), c.resolve::<ConfigService>().unwrap()))
-    };
+    // ────────────────────────────────────────────────────────────
+    // Setup with direct Injector usage
+    // ────────────────────────────────────────────────────────────
+    println!("📦 Creating injector and registering services...");
+    let injector = Injector::root();
 
-    println!("✅ Container configured successfully!\n");
+    // Register singleton Config
+    injector
+        .try_provide::<Config>(Provider::singleton(|_injector| Shared::new(Config::new()))
+)
+        .expect("failed to register Config");
 
-    // Demonstrate singleton behavior
-    println!("--- Singleton Behavior ---");
-    let config1 = container.resolve::<ConfigService>().unwrap();
-    let config2 = container.resolve::<ConfigService>().unwrap();
+    // Register singleton Logger with Config dependency
+    injector
+        .try_provide::<Logger>(Provider::singleton(|injector| {
+            let config = injector
+                .try_resolve::<Config>()
+                .expect("failed to resolve Config");
+            Shared::new(Logger::new(&config))
+        }))
+        .expect("failed to register Logger");
 
-    println!("📋 Config1: {}", config1.get_info());
-    println!("📋 Config2: {}", config2.get_info());
-    println!("🔄 Same instance? {}", Shared::ptr_eq(&config1, &config2));
+    // Register singleton Database with Config dependency
+    injector
+        .try_provide::<Database>(Provider::singleton(|injector| {
+            let config = injector
+                .try_resolve::<Config>()
+                .expect("failed to resolve Config");
+            Shared::new(Database::new(&config))
+        }))
+        .expect("failed to register Database");
 
-    // Use the application
-    println!("\n--- Application Usage ---");
-    let app = container.resolve::<ApplicationService>().unwrap();
+    // Register singleton UserService
+    injector
+        .try_provide::<UserService>(Provider::singleton(|_injector| Shared::new(UserService)))
+        .expect("failed to register UserService");
 
-    // Register some users
-    match app.register_user("Alice Johnson", "alice@example.com") {
-        Ok(result) => println!("✅ {}", result),
-        Err(error) => println!("❌ {}", error),
+    // Register singleton Cache
+    injector
+        .try_provide::<Cache>(Provider::singleton(|_injector| Shared::new(Cache::new())))
+        .expect("failed to register Cache");
+
+    // Register transient RequestHandler
+    injector
+        .try_provide::<RequestHandler>(Provider::transient(|_injector| Shared::new(RequestHandler::new())))
+        .expect("failed to register RequestHandler");
+
+    println!("✓ All services registered!\n");
+
+    // ────────────────────────────────────────────────────────────
+    // Example 1: Singleton Services (same instance)
+    // ────────────────────────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────");
+    println!("Example 1: Singleton Services (same instance)");
+    println!("────────────────────────────────────────────────────────");
+    let config1 = injector
+        .try_resolve::<Config>()
+        .expect("failed to resolve Config");
+    let config2 = injector
+        .try_resolve::<Config>()
+        .expect("failed to resolve Config");
+    println!("Config 1: {:?}", config1);
+    println!("Config 2: {:?}", config2);
+    let same = Shared::ptr_eq(&config1, &config2);
+    println!("✓ Same instance: {}\n", same);
+
+    // ────────────────────────────────────────────────────────────
+    // Example 2: Dependency Resolution
+    // ────────────────────────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────");
+    println!("Example 2: Dependency Resolution");
+    println!("────────────────────────────────────────────────────────");
+    let db1 = injector
+        .try_resolve::<Database>()
+        .expect("failed to resolve Database");
+    let db2 = injector
+        .try_resolve::<Database>()
+        .expect("failed to resolve Database");
+    println!("Database 1: {:?}", db1);
+    println!("Database 2: {:?}", db2);
+    let same_db = Shared::ptr_eq(&db1, &db2);
+    println!("✓ Same instance (singleton): {}\n", same_db);
+
+    // ────────────────────────────────────────────────────────────
+    // Example 3: Using Services with Dependencies
+    // ────────────────────────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────");
+    println!("Example 3: Using Services with Dependencies");
+    println!("────────────────────────────────────────────────────────");
+    let user_service = injector
+        .try_resolve::<UserService>()
+        .expect("failed to resolve UserService");
+    let result = user_service.get_user(&db1);
+    println!("UserService result: {}", result);
+
+    let cache = injector
+        .try_resolve::<Cache>()
+        .expect("failed to resolve Cache");
+    println!("Cache: {:?}", cache);
+    if let Some(value) = cache.get("user:1") {
+        println!("Cache lookup: {}", value);
     }
+    println!();
 
-    match app.register_user("Bob Smith", "bob@example.com") {
-        Ok(result) => println!("✅ {}", result),
-        Err(error) => println!("❌ {}", error),
+    // ────────────────────────────────────────────────────────────
+    // Example 4: Logger (Singleton with configuration)
+    // ────────────────────────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────");
+    println!("Example 4: Logger (Singleton with configuration)");
+    println!("────────────────────────────────────────────────────────");
+    let logger = injector
+        .try_resolve::<Logger>()
+        .expect("failed to resolve Logger");
+    logger.log("Application started");
+    logger.log("Services initialized");
+    logger.log("Ready to handle requests");
+    println!();
+
+    // ────────────────────────────────────────────────────────────
+    // Example 5: Transient Services (different instances)
+    // ────────────────────────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────");
+    println!("Example 5: Transient Services (different instances)");
+    println!("────────────────────────────────────────────────────────");
+    let handler1 = injector
+        .try_resolve::<RequestHandler>()
+        .expect("failed to resolve RequestHandler");
+    let handler2 = injector
+        .try_resolve::<RequestHandler>()
+        .expect("failed to resolve RequestHandler");
+    println!("Handler 1: {:?}", handler1);
+    println!("Handler 2: {:?}", handler2);
+    println!("Handler 1 message: {}", handler1.handle("Get user"));
+    println!("Handler 2 message: {}", handler2.handle("Create post"));
+    let different = !Shared::ptr_eq(&handler1, &handler2);
+    println!("✓ Different instances (transient): {}\n", different);
+
+    // ────────────────────────────────────────────────────────────
+    // Example 6: Multiple requests with transient handlers
+    // ────────────────────────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────");
+    println!("Example 6: Multiple requests with transient handlers");
+    println!("────────────────────────────────────────────────────────");
+    for i in 1..=3 {
+        let handler = injector
+            .try_resolve::<RequestHandler>()
+            .expect("failed to resolve RequestHandler");
+        println!(
+            "Request {}: {}",
+            i,
+            handler.handle(&format!("Operation {}", i))
+        );
     }
+    println!();
 
-    // Try with invalid email
-    match app.register_user("Charlie Brown", "invalid-email") {
-        Ok(result) => println!("✅ {}", result),
-        Err(error) => println!("❌ {}", error),
-    }
-
-    // Demonstrate transient behavior
-    println!("\n--- Transient Behavior ---");
-    let user_service1 = container.resolve::<UserService>().unwrap();
-    let user_service2 = container.resolve::<UserService>().unwrap();
+    // ────────────────────────────────────────────────────────────
+    // Example 7: Verify singleton persistence
+    // ────────────────────────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────");
+    println!("Example 7: Verify singleton persistence across resolves");
+    println!("────────────────────────────────────────────────────────");
+    let config3 = injector
+        .try_resolve::<Config>()
+        .expect("failed to resolve Config");
+    let db3 = injector
+        .try_resolve::<Database>()
+        .expect("failed to resolve Database");
+    let cache1 = injector
+        .try_resolve::<Cache>()
+        .expect("failed to resolve Cache");
+    let cache2 = injector
+        .try_resolve::<Cache>()
+        .expect("failed to resolve Cache");
 
     println!(
-        "🔄 Different UserService instances? {}",
-        !Shared::ptr_eq(&user_service1, &user_service2)
+        "Config instances same: {}",
+        Shared::ptr_eq(&config1, &config3)
     );
-
-    // But they share the same database singleton
     println!(
-        "🔄 Same database instance? {}",
-        Shared::ptr_eq(&user_service1.db, &user_service2.db)
+        "Database instances same: {}",
+        Shared::ptr_eq(&db1, &db3)
     );
+    println!(
+        "Cache instances same: {}",
+        Shared::ptr_eq(&cache1, &cache2)
+    );
+    println!();
 
-    // Show some queries
-    println!("\n--- Database Queries ---");
-    println!("📊 {}", user_service1.get_user(1));
-    println!("📊 {}", user_service2.get_user(2));
+    // ────────────────────────────────────────────────────────────
+    // Example 8: Service Composition
+    // ────────────────────────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────");
+    println!("Example 8: Service Composition");
+    println!("────────────────────────────────────────────────────────");
+    let logger = injector
+        .try_resolve::<Logger>()
+        .expect("failed to resolve Logger");
+    let config = injector
+        .try_resolve::<Config>()
+        .expect("failed to resolve Config");
+    let db = injector
+        .try_resolve::<Database>()
+        .expect("failed to resolve Database");
 
-    // Demonstrate error handling
-    println!("\n--- Error Handling ---");
+    logger.log(&format!("Database initialized at {}", config.database_url));
+    logger.log(&db.query("SELECT COUNT(*) FROM users"));
+    logger.log("Service composition working perfectly!");
+    println!();
 
-    // Try to get a service that wasn't registered
-    match container.resolve::<String>() {
-        Ok(_) => println!("This shouldn't happen"),
-        Err(e) => println!("❌ Expected error: {}", e),
-    }
-
-    // Try to register a duplicate factory
-    let new_container = Container::new();
-    new_container
-        .bind_concrete::<String, String, _>(|_| "first".to_string())
-        .unwrap();
-    match new_container.bind_concrete::<String, String, _>(|_| "duplicate".to_string()) {
-        Ok(_) => println!("This shouldn't happen either"),
-        Err(e) => println!("❌ Expected error: {}", e),
-    }
-
-    println!("\n🎉 Example completed successfully!");
-    println!("\nKey takeaways:");
-    println!("• Singletons (Config, Database) are created once and shared");
-    println!("• Transients (Logger, UserService, etc.) are created fresh each time");
-    println!("• Dependencies are automatically injected based on factory functions");
-    println!("• Error handling provides clear feedback for missing or duplicate services");
-    println!("• The container manages the entire object graph automatically");
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_container_setup() {
-        let c = Container::new();
-        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new())
-            .unwrap();
-        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| {
-            DatabaseService::new(c.resolve::<ConfigService>().unwrap())
-        })
-        .unwrap();
-        c.bind_concrete::<LoggerService, LoggerService, _>(|c| {
-            LoggerService::new(
-                c.resolve::<DatabaseService>().unwrap(),
-                c.resolve::<ConfigService>().unwrap(),
-            )
-        })
-        .unwrap();
-
-        let logger = c.resolve::<LoggerService>().unwrap();
-        logger.log("TEST", "Container setup works!");
-    }
-
-    #[test]
-    fn test_singleton_sharing() {
-        let c = Container::new();
-        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new())
-            .unwrap();
-
-        let config1 = c.resolve::<ConfigService>().unwrap();
-        let config2 = c.resolve::<ConfigService>().unwrap();
-
-        // Same instance
-        assert!(Shared::ptr_eq(&config1, &config2));
-    }
-
-    #[test]
-    fn test_transient_behavior() {
-        let c = Container::new();
-        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new())
-            .unwrap();
-        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| {
-            DatabaseService::new(c.resolve::<ConfigService>().unwrap())
-        })
-        .unwrap();
-        c.bind_concrete::<LoggerService, LoggerService, _>(|c| {
-            LoggerService::new(
-                c.resolve::<DatabaseService>().unwrap(),
-                c.resolve::<ConfigService>().unwrap(),
-            )
-        })
-        .unwrap();
-
-        let logger1 = c.resolve::<LoggerService>().unwrap();
-        let logger2 = c.resolve::<LoggerService>().unwrap();
-
-        // Different instances
-        assert!(!Shared::ptr_eq(&logger1, &logger2));
-
-        // But same database
-        assert!(Shared::ptr_eq(&logger1.db, &logger2.db));
-    }
-
-    #[test]
-    fn test_user_registration() {
-        let c = Container::new();
-        c.bind_concrete_singleton::<ConfigService, ConfigService, _>(|_| ConfigService::new())
-            .unwrap();
-        c.bind_concrete_singleton::<DatabaseService, DatabaseService, _>(|c| {
-            DatabaseService::new(c.resolve::<ConfigService>().unwrap())
-        })
-        .unwrap();
-        c.bind_concrete::<LoggerService, LoggerService, _>(|c| {
-            LoggerService::new(
-                c.resolve::<DatabaseService>().unwrap(),
-                c.resolve::<ConfigService>().unwrap(),
-            )
-        })
-        .unwrap();
-        c.bind_concrete::<UserService, UserService, _>(|c| {
-            UserService::new(
-                c.resolve::<DatabaseService>().unwrap(),
-                c.resolve::<LoggerService>().unwrap(),
-            )
-        })
-        .unwrap();
-        c.bind_concrete::<EmailService, EmailService, _>(|c| {
-            EmailService::new(
-                c.resolve::<ConfigService>().unwrap(),
-                c.resolve::<LoggerService>().unwrap(),
-            )
-        })
-        .unwrap();
-        c.bind_concrete::<ApplicationService, ApplicationService, _>(|c| {
-            ApplicationService::new(
-                c.resolve::<UserService>().unwrap(),
-                c.resolve::<EmailService>().unwrap(),
-                c.resolve::<ConfigService>().unwrap(),
-            )
-        })
-        .unwrap();
-
-        let app = c.resolve::<ApplicationService>().unwrap();
-        let result = app.register_user("Test User", "test@example.com");
-
-        assert!(result.is_ok());
-        assert!(result.unwrap().contains("Test User"));
-    }
+    println!("╔════════════════════════════════════════════════════════╗");
+    println!("║                    Example Complete                    ║");
+    println!("║                                                        ║");
+    println!("║  Demonstrated Features:                                ║");
+    println!("║  ✓ Injector & Provider pattern                         ║");
+    println!("║  ✓ Singleton services (same instance)                  ║");
+    println!("║  ✓ Transient services (different instances)            ║");
+    println!("║  ✓ Service dependency resolution                       ║");
+    println!("║  ✓ Multiple service types                              ║");
+    println!("║  ✓ Service composition patterns                        ║");
+    println!("╚════════════════════════════════════════════════════════╝");
 }
