@@ -41,7 +41,7 @@ impl Logger {
 /// Database connection - demonstrates singleton
 #[derive(Debug)]
 struct Database {
-    url: String,
+    _url: String,
     id: usize,
 }
 
@@ -51,7 +51,7 @@ impl Database {
         let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         Self {
-            url: config.database_url.clone(),
+            _url: config.database_url.clone(),
             id,
         }
     }
@@ -94,13 +94,13 @@ impl RequestHandler {
 /// Cache service - demonstrates singleton
 #[derive(Debug)]
 struct Cache {
-    name: String,
+    _name: String,
 }
 
 impl Cache {
     fn new() -> Self {
         Self {
-            name: "in-memory-cache".to_string(),
+            _name: "in-memory-cache".to_string(),
         }
     }
 

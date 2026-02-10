@@ -629,10 +629,11 @@ mod tests {
         let instance = Instance::new(data);
 
         // Store in a vector
-        let mut storage: Vec<Shared<TestData>> = Vec::new();
-        storage.push(instance.value());
-        storage.push(instance.value());
-        storage.push(instance.value());
+        let storage: Vec<Shared<TestData>> = vec![
+            instance.value(),
+            instance.value(),
+            instance.value(),
+        ];
 
         // All stored references point to the same data
         assert!(Shared::ptr_eq(&storage[0], &storage[1]));

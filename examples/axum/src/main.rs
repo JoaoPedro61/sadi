@@ -55,6 +55,7 @@ impl<T: Serialize> ApiResponse<T> {
 }
 
 impl ApiResponse<()> {
+    #[allow(unused)]
     fn error(msg: String) -> Self {
         ApiResponse {
             success: false,

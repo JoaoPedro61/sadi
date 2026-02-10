@@ -311,12 +311,12 @@ impl<T: ?Sized + 'static> Provider<T> {
     /// # Type Parameters
     ///
     /// - `F`: Factory function type that takes an [`Injector`] reference and returns `Shared<T>`.
-    ///        Must be `Send + Sync` for thread safety.
+    ///   Must be `Send + Sync` for thread safety.
     ///
     /// # Arguments
     ///
     /// - `factory`: A closure that creates the instance when first requested.
-    ///              The closure must be `Send + Sync`.
+    ///   The closure must be `Send + Sync`.
     ///
     /// # Thread Safety
     ///
@@ -382,12 +382,12 @@ impl<T: ?Sized + 'static> Provider<T> {
     /// # Type Parameters
     ///
     /// - `F`: Factory function type that takes an [`Injector`] reference and returns `Shared<T>`.
-    ///        Must be `Send + Sync` for thread safety.
+    ///   Must be `Send + Sync` for thread safety.
     ///
     /// # Arguments
     ///
     /// - `factory`: A closure that creates a new instance on each invocation.
-    ///              The closure must be `Send + Sync`.
+    ///   The closure must be `Send + Sync`.
     ///
     /// # Use Cases
     ///
@@ -445,12 +445,12 @@ impl<T: ?Sized + 'static> Provider<T> {
     /// # Type Parameters
     ///
     /// - `F`: Factory function type that takes an [`Injector`] reference and returns `Shared<T>`.
-    ///        Must be `Send + Sync` for thread safety.
+    ///   Must be `Send + Sync` for thread safety.
     ///
     /// # Arguments
     ///
     /// - `factory`: A closure that creates the instance when first requested.
-    ///              The closure must be `Send + Sync`.
+    ///   The closure must be `Send + Sync`.
     ///
     /// # Use Cases
     ///
